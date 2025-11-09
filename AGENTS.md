@@ -64,6 +64,8 @@
 - Docstrings for public functions; prefer pure functions for chunking logic.
 - Log with `logging` (structured if convenient); no secrets in logs.
 
+See also: `docs/python_guidelines.md` for Python‑specific development guidance.
+
 **Testing Guidance**
 - Use `pytest`. Add fast tests for:
   - PDF/Markdown loaders return text and metadata.
@@ -95,4 +97,3 @@
 - Favor simplicity and traceability over features.
 - Ask/flag before performing destructive changes, large dependency additions, or migrating the stack.
 - If external APIs are unavailable, implement with open-source fallbacks and document limitations.
-
