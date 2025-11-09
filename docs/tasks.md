@@ -5,6 +5,7 @@ Use this checklist to track progress while building the LLM Airline Policy App. 
 ## Repository & Environment
 - [ ] Add `.gitignore` entries for `data/`, `.env`, `.venv/`, caches, and build artifacts.
 - [ ] Create `requirements.txt` with FastAPI, Uvicorn, FAISS, embeddings/LLM SDKs, PDF parsing, and tooling.
+- [ ] Create `pyproject.toml` (project metadata; configure black, isort, ruff, pytest).
 - [ ] Create `.env.example` with required variables (no secrets).
 - [ ] Set up local Python 3.11+ virtual environment.
 
@@ -79,4 +80,3 @@ Use this checklist to track progress while building the LLM Airline Policy App. 
 - [ ] Manual sanity test on key queries; verify citations and links.
 - [ ] Ensure `data/` and secrets are ignored; repo is clean.
 - [ ] Tag initial version and prepare review notes.
-
