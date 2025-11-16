@@ -20,6 +20,28 @@ This command will:
 
 Run this ingestion step whenever policies change so the RAG system uses the latest content.
 
+### Running with Docker & Docker Compose
+
+You can run the project using the provided `Dockerfile` and `docker-compose.yml`.
+
+1. Build and start the API (once it exists) with hot reload:
+   ```bash
+   docker compose up --build app
+   ```
+   - The container mounts your local repo, so code changes reflect immediately.
+   - Set your API keys in `.env` (which is referenced by the compose file).
+
+2. Run ingestion inside the container (persists data under `./data`):
+   ```bash
+   docker compose run --rm --profile ingest ingest
+   ```
+   The ingestion profile keeps the ingest container from running automatically when you bring up the main app.
+
+3. Stop all services:
+   ```bash
+   docker compose down
+   ```
+
 We will add setup and run instructions here in a later step.
 
 ### Documentation
