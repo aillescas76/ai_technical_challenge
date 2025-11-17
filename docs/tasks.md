@@ -134,8 +134,8 @@ This workflow stitches together ingestion, vector store, embeddings, and LLM int
 - [ ] Add a minimal HTML page (or small frontend) to submit questions to `/ask`.
 - [ ] Display answer returned by the API.
 - [ ] Display cited sources (airline + title, and links when available).
-- [ ] (Optional) Display streaming answer as it arrives from the backend.
-- [ ] (Optional) Add airline filter control and top-k selector for debugging.
+- [ ] Display streaming answer as it arrives from the backend.
+- [ ] Add airline filter control and top-k selector for debugging.
 
 This workflow focuses on usability and can evolve independently once the API contract is stable.
 
@@ -152,6 +152,7 @@ This workflow focuses on usability and can evolve independently once the API con
 - Evaluation dataset (e.g., `data/eval_questions.jsonl` or similar).
 - Pytest-based eval harness (e.g., under `tests/test_eval_*.py`).
 - JSONL eval results (e.g., `data/eval_results.jsonl`, not committed).
+- LangFuse project + API keys configured via env vars so eval runs and metrics are captured centrally.
 - Basic performance metrics (latency and cost) captured in logs or eval output.
 
 **Tasks**
@@ -160,6 +161,8 @@ This workflow focuses on usability and can evolve independently once the API con
 - [ ] Build a `pytest` eval harness to run retrieval + generation and record JSONL results.
 - [ ] Compute retrieval metrics (Recall@k, MRR), citation correctness, groundedness, refusals.
 - [ ] Track latency (P50/P95) and token/cost per request.
+- [ ] Integrate LangFuse Python SDK: log each eval run, attach metrics, citations, and latency/cost metadata.
+- [ ] Store LangFuse credentials via `.env` and document the required env vars in `app/config.py` / `.env.example`.
 - [ ] Use evals to select models/params (speed/price vs. quality), then lock defaults.
 - [ ] Enable response streaming to reduce perceived latency.
 - [ ] Add in-memory caching for repeated queries and airline-filtered lookups.
@@ -196,3 +199,34 @@ This workflow makes the RAG system “test-like complete” with measurable qual
 - [ ] Tag initial version and prepare review notes (or equivalent summary for reviewers).
 
 This workflow ensures the repository is cohesive, well-documented, and ready for review as a complete RAG system.
+
+---
+
+## Workflow H – LangFuse Monitoring & Telemetry
+
+**Preconditions**
+- Workflows D–F: API server, eval harness, and instrumentation hooks exist.
+- LangFuse workspace credentials available via environment variables (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`).
+
+**Outputs**
+- LangFuse SDK initialized inside FastAPI, ingestion, and eval paths with consistent trace IDs.
+- LangFuse dashboards tracking request volume, latency, model usage, eval scores, and error rates.
+- Runbooks for using LangFuse UI to inspect traces, evals, and anomalies.
+
+**Tasks**
+- [ ] Add LangFuse client setup helper (e.g., `app/telemetry.py`) that reads env vars and exposes trace/span utilities.
+- [ ] Instrument `/ask` handler to report traces, context chunks, LLM inputs/outputs, and any errors to LangFuse (ensure sensitive data redaction).
+- [ ] Log eval harness runs to LangFuse as a dedicated dataset with pass/fail metrics and tags per workflow or dataset version.
+- [ ] Configure LangFuse dashboards/alerts for latency (P50/P95), failure rate, and eval regression thresholds; document how to review them in `README.md`.
+- [ ] Ensure LangFuse usage is optional (graceful no-op when credentials are missing) so local devs without keys can still run the stack.
+
+### Local LangFuse Setup (for Workflows F & H)
+
+When developing locally, spin up LangFuse via Docker so eval runs and API traces have a destination:
+
+1. `git clone https://github.com/langfuse/langfuse.git && cd langfuse`.
+2. Update secrets in that repo’s `docker-compose.yml` (matching the env vars configured in `.env`).  
+3. `docker compose up` and wait for `langfuse-web-1` to log “Ready” (~2–3 minutes).  
+4. Visit `http://localhost:3000` to access the LangFuse UI and grab the public/secret keys for your local project.
+
+Document the resulting env vars (`LANGFUSE_HOST=http://localhost:3000`, key pair) in `.env.example` and ensure all LangFuse instrumentation handles the “service unavailable” case gracefully if Docker isn’t running.
