@@ -8,7 +8,7 @@ This project implements a small, retrieval‑augmented generation (RAG) applicat
 
 All workflows (ingestion and the future API) are executed via Docker so you never have to install Python dependencies directly on your host.
 
-1. Copy `.env.example` to `.env` and fill in the required variables (e.g., `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`). Docker Compose automatically loads this file.
+1. Copy `.env.example` to `.env` and fill in the required variables (e.g., `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`). Docker Compose automatically loads this file. When using providers that LiteLLM cannot infer automatically (e.g., Anthropics' `claude-3-5-haiku`), set `LLM_PROVIDER_OVERRIDES` to a comma-separated list such as `claude-3-5-haiku:anthropic` (JSON is also accepted) so the runtime passes the correct provider hint.
 2. Build the shared image used by every service:
    ```bash
    docker compose build
@@ -18,11 +18,13 @@ All workflows (ingestion and the future API) are executed via Docker so you neve
    docker compose run --rm ingest
    ```
    This performs the entire pipeline inside Docker: load policy files, write `data/processed.jsonl`, and persist the FAISS artifacts under `data/faiss/`.
-4. Start the FastAPI server (once implemented) with live reload:
+4. Start the FastAPI backend **and** the lightweight front-end UI with live reload:
    ```bash
    docker compose up app
    ```
-   The container mounts the repo so code edits are reflected immediately.
+   - The `app` service serves both the API (`/ask`, `/ask/stream`, `/healthz`) and the streaming UI hosted at `http://localhost:8000/`.
+   - Once the container is running, open `http://localhost:8000` in your browser to use the front-end or `http://localhost:8000/docs` for the interactive API docs.
+   - The container mounts the repo so code edits (Python or `app/templates/index.html`) are reflected immediately.
 5. Tear everything down when finished:
    ```bash
    docker compose down

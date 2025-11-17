@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Sequence
 
 from dotenv import load_dotenv
 
@@ -24,9 +24,55 @@ VECTOR_STORE_PATH: Path = Path(
     os.getenv("VECTOR_STORE_PATH", str(_default_vector_store_dir))
 )
 
+
+def _parse_model_list(env_var: str, default: Sequence[str]) -> tuple[str, ...]:
+    raw_value = os.getenv(env_var)
+    if raw_value:
+        cleaned = [item.strip() for item in raw_value.split(",")]
+        parsed = [item for item in cleaned if item]
+        if parsed:
+            return tuple(parsed)
+    return tuple(default)
+
+
+def _parse_provider_overrides(env_var: str) -> Dict[str, str]:
+    raw_value = os.getenv(env_var)
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        parsed = None
+    overrides: Dict[str, str] = {}
+    if isinstance(parsed, dict):
+        for model_name, provider_name in parsed.items():
+            model = str(model_name).strip()
+            provider = str(provider_name).strip()
+            if model and provider:
+                overrides[model] = provider
+        if overrides:
+            return overrides
+    for entry in raw_value.split(","):
+        if ":" not in entry:
+            continue
+        model, provider = entry.split(":", 1)
+        model = model.strip()
+        provider = provider.strip()
+        if model and provider:
+            overrides[model] = provider
+    return overrides
+
+
 EMBEDDINGS_MODEL: str = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
 LLM_BASE_URL: str | None = os.getenv("LLM_BASE_URL") or None
 LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL_FALLBACKS: tuple[str, ...] = _parse_model_list(
+    "LLM_MODEL_FALLBACKS",
+    ("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"),
+)
+LLM_PROVIDER_OVERRIDES: Dict[str, str] = _parse_provider_overrides(
+    "LLM_PROVIDER_OVERRIDES"
+)
 OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 
 LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))

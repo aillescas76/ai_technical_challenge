@@ -196,13 +196,16 @@ class RagEngine:
 
     def stream(
         self, request: RagRequest
-    ) -> Iterator[Tuple[Literal["token", "final"], str | RagAnswer]]:
+    ) -> Iterator[
+        Tuple[Literal["token", "final", "citations"], str | RagAnswer | List[Citation]]
+    ]:
         """Yield streaming events (token chunks, then final answer)."""
         normalized_request = self._normalize_request(request)
         cache_key = self._cache_key(normalized_request)
         cached = self._cache.get(cache_key)
         if cached:
             cached.from_cache = True
+            yield ("citations", cached.citations)
             yield ("final", cached)
             return
 
@@ -218,6 +221,7 @@ class RagEngine:
                 costs=CostBreakdown(prompt_usd=0.0, completion_usd=0.0, embedding_usd=0.0),
             )
             self._cache.set(cache_key, empty_answer)
+            yield ("citations", empty_answer.citations)
             yield ("final", empty_answer)
             return
 
@@ -226,6 +230,8 @@ class RagEngine:
         )
         embedding_tokens = self._estimate_tokens(normalized_request.question)
         prompt_tokens = self._estimate_message_tokens(messages)
+
+        yield ("citations", citations)
 
         start = perf_counter()
         chunks: List[str] = []

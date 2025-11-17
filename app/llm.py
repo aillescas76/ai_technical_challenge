@@ -4,12 +4,15 @@ import logging
 from typing import Any, Iterable, List, Literal, Optional, Sequence, TypedDict
 
 import litellm
+from litellm.exceptions import AuthenticationError as LiteLLMAuthenticationError
 
 from app.config import (
     EMBEDDINGS_MODEL,
     EMBEDDINGS_TIMEOUT_SECONDS,
     LLM_BASE_URL,
     LLM_MODEL,
+    LLM_MODEL_FALLBACKS,
+    LLM_PROVIDER_OVERRIDES,
     LLM_TIMEOUT_SECONDS,
 )
 
@@ -48,16 +51,6 @@ class LiteLLMClient:
 _client = LiteLLMClient(api_base=LLM_BASE_URL)
 
 
-def _get_model_name(explicit_model: Optional[str]) -> str:
-    """Return the model name to use for chat completions."""
-    model_name = explicit_model or LLM_MODEL
-    if not model_name:
-        raise RuntimeError(
-            "LLM model name is not configured. Set the LLM_MODEL environment variable."
-        )
-    return model_name
-
-
 def _get_embeddings_model_name(explicit_model: Optional[str]) -> str:
     """Return the model name to use for embeddings."""
     model_name = explicit_model or EMBEDDINGS_MODEL
@@ -79,20 +72,22 @@ def chat_completion(
     **kwargs: object,
 ) -> str:
     """Call LiteLLM for a non-streaming chat completion and return the text content."""
-    model_name = _get_model_name(model)
+    candidate_models = _candidate_models(model)
     request_timeout = timeout or LLM_TIMEOUT_SECONDS
     try:
-        response = _run_completion(
+        response, _ = _run_completion_with_fallbacks(
             messages,
-            model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
             timeout=request_timeout,
             extra_kwargs=dict(kwargs),
+            candidate_models=candidate_models,
         )
     except Exception:
-        logger.exception("LiteLLM chat completion failed for model %s", model_name)
+        logger.exception(
+            "LiteLLM chat completion failed after trying models: %s", candidate_models
+        )
         raise
 
     return _extract_message_content(response)
@@ -108,20 +103,23 @@ def stream_chat_completion(
     **kwargs: object,
 ) -> Iterable[str]:
     """Call LiteLLM for a streaming chat completion and yield content chunks."""
-    model_name = _get_model_name(model)
+    candidate_models = _candidate_models(model)
     request_timeout = timeout or LLM_TIMEOUT_SECONDS
     try:
-        response_stream = _run_completion(
+        response_stream, _ = _run_completion_with_fallbacks(
             messages,
-            model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
             timeout=request_timeout,
             extra_kwargs=dict(kwargs),
+            candidate_models=candidate_models,
         )
     except Exception:
-        logger.exception("LiteLLM streaming chat completion failed for model %s", model_name)
+        logger.exception(
+            "LiteLLM streaming chat completion failed after trying models: %s",
+            candidate_models,
+        )
         raise
 
     for chunk in response_stream:
@@ -143,11 +141,13 @@ def embed_texts_with_litellm(
 
     try:
         request_timeout = timeout or EMBEDDINGS_TIMEOUT_SECONDS
-        response = _client.embedding(
-            model=model_name,
-            input=list(texts),
-            timeout=request_timeout,
-        )
+        payload: dict[str, Any] = {
+            "model": model_name,
+            "input": list(texts),
+            "timeout": request_timeout,
+        }
+        _maybe_apply_provider_override(model_name, payload)
+        response = _client.embedding(**payload)
     except Exception:
         logger.exception("LiteLLM embeddings request failed for model %s", model_name)
         raise
@@ -181,7 +181,41 @@ def _run_completion(
         "timeout": timeout,
     }
     payload.update(extra_kwargs)
+    _maybe_apply_provider_override(model_name, payload)
     return _client.completion(**payload)
+
+
+def _run_completion_with_fallbacks(
+    messages: Sequence[ChatMessage],
+    *,
+    temperature: float,
+    max_tokens: Optional[int],
+    stream: bool,
+    timeout: float,
+    extra_kwargs: dict[str, object],
+    candidate_models: Sequence[str],
+) -> tuple[Any, str]:
+    last_auth_error: LiteLLMAuthenticationError | None = None
+    for candidate in candidate_models:
+        try:
+            response = _run_completion(
+                messages,
+                model_name=candidate,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=stream,
+                timeout=timeout,
+                extra_kwargs=extra_kwargs,
+            )
+            return response, candidate
+        except LiteLLMAuthenticationError as exc:
+            last_auth_error = exc
+            logger.warning(
+                "LiteLLM denied access to model %s, trying next fallback", candidate
+            )
+    if last_auth_error is not None:
+        raise last_auth_error
+    raise RuntimeError("No LLM models available for completion")
 
 
 def _extract_message_content(response: Any) -> str:
@@ -213,3 +247,27 @@ def _get_attribute(obj: Any, attribute: str, *, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(attribute, default)
     return getattr(obj, attribute, default)
+
+
+def _maybe_apply_provider_override(model_name: str, payload: dict[str, Any]) -> None:
+    """Attach LiteLLM provider hint when configured for a given model."""
+    if "custom_llm_provider" in payload:
+        return
+    provider = LLM_PROVIDER_OVERRIDES.get(model_name)
+    if provider:
+        payload["custom_llm_provider"] = provider
+
+
+def _candidate_models(explicit_model: Optional[str]) -> List[str]:
+    """Return ordered candidate models, ensuring at least one is configured."""
+    models: List[str] = []
+    seen: set[str] = set()
+    for candidate in (explicit_model, LLM_MODEL, *LLM_MODEL_FALLBACKS):
+        if candidate and candidate not in seen:
+            models.append(candidate)
+            seen.add(candidate)
+    if not models:
+        raise RuntimeError(
+            "LLM model name is not configured. Set the LLM_MODEL environment variable."
+        )
+    return models
