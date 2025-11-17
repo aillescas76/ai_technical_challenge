@@ -104,12 +104,17 @@ This workflow can run largely in parallel with Workflow B, coordinating only on 
 - Working OpenAPI docs at `/docs`.
 
 **Tasks**
-- [ ] Scaffold FastAPI app in `app/server.py`.
-- [ ] Define request/response schemas in `app/schemas.py`.
-- [ ] Initialize and cache vector store at startup (load FAISS index from `data/faiss/`).
-- [ ] Add `/ask` endpoint: retrieve chunks, assemble context, call LLM, return answer + citations.
-- [ ] Add `/healthz` endpoint and document `/docs` (OpenAPI) for manual testing.
-- [ ] Implement clear error handling (e.g., missing index, empty retrieval, model errors).
+- [x] Scaffold FastAPI app in `app/server.py`.
+- [x] Define request/response schemas in `app/schemas.py`.
+- [x] Initialize and cache vector store at startup (load FAISS index from `data/faiss/`).
+- [x] Add `/ask` endpoint: retrieve chunks, assemble context, call LLM, return answer + citations.
+- [x] Add `/healthz` endpoint and document `/docs` (OpenAPI) for manual testing.
+- [x] Implement clear error handling (e.g., missing index, empty retrieval, model errors).
+
+**Notes**
+- `app/server.py` loads the FAISS index at startup; if `data/faiss/` is missing the `/ask` route returns `503` instructing operators to run `python -m app.ingest`.
+- `/ask` now requires `question`, accepts optional `airline` and `top_k<=8`, and returns `AskResponse` with structured citations (airline, title, snippet, score).
+- `/healthz` reports `status` (`ok`, `index_missing`, `error`) plus the vector count so later workflows can confirm readiness.
 
 This workflow stitches together ingestion, vector store, embeddings, and LLM into a callable backend.
 
