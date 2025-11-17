@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+import logging
+from typing import Any, Iterable, List, Literal, Optional, Sequence, TypedDict
+
+import litellm
+
+from app.config import EMBEDDINGS_MODEL, LLM_BASE_URL, LLM_MODEL
+
+
+logger = logging.getLogger(__name__)
+
+
+Role = Literal["system", "user", "assistant", "tool"]
+
+
+class ChatMessage(TypedDict):
+    """Typed representation of a chat message compatible with LiteLLM."""
+
+    role: Role
+    content: str
+
+
+class LiteLLMClient:
+    """Small wrapper to avoid mutating LiteLLM's module-level configuration."""
+
+    def __init__(self, *, api_base: Optional[str]) -> None:
+        self._api_base = api_base
+
+    def completion(self, **kwargs: Any) -> Any:
+        return litellm.completion(**self._with_api_base(kwargs))
+
+    def embedding(self, **kwargs: Any) -> Any:
+        return litellm.embedding(**self._with_api_base(kwargs))
+
+    def _with_api_base(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        if self._api_base and "api_base" not in kwargs:
+            return {**kwargs, "api_base": self._api_base}
+        return kwargs
+
+
+_client = LiteLLMClient(api_base=LLM_BASE_URL)
+
+
+def _get_model_name(explicit_model: Optional[str]) -> str:
+    """Return the model name to use for chat completions."""
+    model_name = explicit_model or LLM_MODEL
+    if not model_name:
+        raise RuntimeError(
+            "LLM model name is not configured. Set the LLM_MODEL environment variable."
+        )
+    return model_name
+
+
+def _get_embeddings_model_name(explicit_model: Optional[str]) -> str:
+    """Return the model name to use for embeddings."""
+    model_name = explicit_model or EMBEDDINGS_MODEL
+    if not model_name:
+        raise RuntimeError(
+            "Embeddings model name is not configured. "
+            "Set the EMBEDDINGS_MODEL environment variable."
+        )
+    return model_name
+
+
+def chat_completion(
+    messages: Sequence[ChatMessage],
+    *,
+    model: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: Optional[int] = None,
+    **kwargs: object,
+) -> str:
+    """Call LiteLLM for a non-streaming chat completion and return the text content."""
+    model_name = _get_model_name(model)
+    try:
+        response = _run_completion(
+            messages,
+            model_name=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=False,
+            extra_kwargs=dict(kwargs),
+        )
+    except Exception:
+        logger.exception("LiteLLM chat completion failed for model %s", model_name)
+        raise
+
+    return _extract_message_content(response)
+
+
+def stream_chat_completion(
+    messages: Sequence[ChatMessage],
+    *,
+    model: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: Optional[int] = None,
+    **kwargs: object,
+) -> Iterable[str]:
+    """Call LiteLLM for a streaming chat completion and yield content chunks."""
+    model_name = _get_model_name(model)
+    try:
+        response_stream = _run_completion(
+            messages,
+            model_name=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            extra_kwargs=dict(kwargs),
+        )
+    except Exception:
+        logger.exception("LiteLLM streaming chat completion failed for model %s", model_name)
+        raise
+
+    for chunk in response_stream:
+        content_piece = _extract_delta_content(chunk)
+        if content_piece:
+            yield content_piece
+
+
+def embed_texts_with_litellm(
+    texts: Sequence[str],
+    *,
+    model: Optional[str] = None,
+) -> List[List[float]]:
+    """Create embeddings for a batch of texts using LiteLLM's embeddings API."""
+    model_name = _get_embeddings_model_name(model)
+    if not texts:
+        return []
+
+    try:
+        response = _client.embedding(model=model_name, input=list(texts))
+    except Exception:
+        logger.exception("LiteLLM embeddings request failed for model %s", model_name)
+        raise
+
+    data = _get_attribute(response, "data", default=[])
+    return [
+        [float(value) for value in embedding]
+        for item in data
+        if (embedding := _get_attribute(item, "embedding")) is not None
+    ]
+
+
+def _run_completion(
+    messages: Sequence[ChatMessage],
+    *,
+    model_name: str,
+    temperature: float,
+    max_tokens: Optional[int],
+    stream: bool,
+    extra_kwargs: dict[str, object],
+) -> Any:
+    if "stream" in extra_kwargs:
+        raise TypeError("stream argument is managed internally by app.llm")
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": list(messages),
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream,
+    }
+    payload.update(extra_kwargs)
+    return _client.completion(**payload)
+
+
+def _extract_message_content(response: Any) -> str:
+    choice = _first_choice(response)
+    message = _get_attribute(choice, "message", default={})
+    content = _get_attribute(message, "content")
+    return str(content or "")
+
+
+def _extract_delta_content(chunk: Any) -> Optional[str]:
+    try:
+        choice = _first_choice(chunk)
+    except ValueError:
+        logger.debug("LiteLLM chunk missing choices: %r", chunk)
+        return None
+    delta = _get_attribute(choice, "delta", default={})
+    content_piece = _get_attribute(delta, "content")
+    return str(content_piece) if content_piece else None
+
+
+def _first_choice(response: Any) -> Any:
+    choices = _get_attribute(response, "choices", default=())
+    if not choices:
+        raise ValueError("LiteLLM response contained no choices")
+    return choices[0]
+
+
+def _get_attribute(obj: Any, attribute: str, *, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(attribute, default)
+    return getattr(obj, attribute, default)

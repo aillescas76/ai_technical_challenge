@@ -50,15 +50,16 @@ This workflow can proceed in parallel with others as soon as the repo is cloned.
 - CLI entry point: `python -m app.ingest`.
 
 **Tasks**
-- [ ] Implement Markdown loader (preserve headings, extract links).
-- [ ] Implement PDF text extraction (and link annotation capture where possible).
-- [ ] Derive metadata from path: `airline`, `title`, optional `category`, `source_path`.
-- [ ] Extract best canonical `source_url` from document content when available.
-- [ ] Chunk documents (≈800–1000 tokens, ≈150 overlap) and persist `data/processed.jsonl`.
-- [ ] Implement `app/vector_store.py` (FAISS wrapper): add, search, persist/load.
-- [ ] Persist index under `data/faiss/` and ensure it can be reloaded.
-- [ ] Provide a CLI (`python -m app.ingest`) to (re)build processed data and index.
-- [ ] Add unit tests for loaders, chunking, and index build/search/persistence.
+- [x] Create feature branch `feature/data-ingestion` for this workflow.
+- [x] Implement Markdown loader (preserve headings, extract links).
+- [x] Implement PDF text extraction (and link annotation capture where possible).
+- [x] Derive metadata from path: `airline`, `title`, optional `category`, `source_path`.
+- [x] Extract best canonical `source_url` from document content when available.
+- [x] Chunk documents (≈800–1000 tokens, ≈150 overlap) and persist `data/processed.jsonl`.
+- [x] Implement `app/vector_store.py` (FAISS wrapper): add, search, persist/load.
+- [x] Persist index under `data/faiss/` and ensure it can be reloaded.
+- [x] Provide a CLI (`python -m app.ingest`) to (re)build processed data and index.
+- [x] Add unit tests for loaders, chunking, and index build/search/persistence.
 
 This workflow provides the data + index foundation that the API and LLM workflows consume.
 
@@ -78,10 +79,10 @@ This workflow provides the data + index foundation that the API and LLM workflow
 - Stubbed tests for embeddings and LLM clients (network-free where possible).
 
 **Tasks**
-- [ ] Implement embeddings client (`text-embedding-3-small`, fallback to `all-MiniLM-L6-v2`).
-- [ ] Implement chat client (`gpt-4o-mini` by default) with streaming support.
+- [x] Implement embeddings client via LiteLLM (`text-embedding-3-small`, fallback to `all-MiniLM-L6-v2`).
+- [x] Implement chat client via LiteLLM (`gpt-4o-mini` by default) with streaming support.
 - [ ] Create grounded answer prompt with citation rules (airline + doc title, optional URL) and refusal behavior.
-- [ ] Add configuration support for `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`, `VECTOR_STORE_PATH`.
+- [x] Add configuration support for `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`, `VECTOR_STORE_PATH`.
 - [ ] Add unit tests with stubbed embeddings/LLM to avoid network usage.
 
 This workflow can run largely in parallel with Workflow B, coordinating only on the embedding vector size for FAISS.
