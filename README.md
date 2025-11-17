@@ -18,11 +18,13 @@ All workflows (ingestion and the future API) are executed via Docker so you neve
    docker compose run --rm ingest
    ```
    This performs the entire pipeline inside Docker: load policy files, write `data/processed.jsonl`, and persist the FAISS artifacts under `data/faiss/`.
-4. Start the FastAPI server (once implemented) with live reload:
+4. Start the FastAPI backend **and** the lightweight front-end UI with live reload:
    ```bash
    docker compose up app
    ```
-   The container mounts the repo so code edits are reflected immediately.
+   - The `app` service serves both the API (`/ask`, `/ask/stream`, `/healthz`) and the streaming UI hosted at `http://localhost:8000/`.
+   - Once the container is running, open `http://localhost:8000` in your browser to use the front-end or `http://localhost:8000/docs` for the interactive API docs.
+   - The container mounts the repo so code edits (Python or `app/templates/index.html`) are reflected immediately.
 5. Tear everything down when finished:
    ```bash
    docker compose down

@@ -131,11 +131,15 @@ This workflow stitches together ingestion, vector store, embeddings, and LLM int
 - Display of citations (airline + document title, optional URL/preview).
 
 **Tasks**
-- [ ] Add a minimal HTML page (or small frontend) to submit questions to `/ask`.
-- [ ] Display answer returned by the API.
-- [ ] Display cited sources (airline + title, and links when available).
-- [ ] Display streaming answer as it arrives from the backend.
-- [ ] Add airline filter control and top-k selector for debugging.
+- [x] Add a minimal HTML page (or small frontend) to submit questions to `/ask`.
+- [x] Display answer returned by the API.
+- [x] Display cited sources (airline + title, and links when available).
+- [x] Display streaming answer as it arrives from the backend.
+- [x] Add airline filter control and top-k selector for debugging.
+
+**Notes**
+- UI served from `/` using `app/templates/index.html`; submits to `/ask/stream` for streaming and updates citations as events arrive.
+- The `/ask` JSON endpoint remains available for non-UI clients, while `/ask/stream` emits newline-delimited JSON events (`citations`, `chunk`, `complete`, `error`) consumed by the frontend.
 
 This workflow focuses on usability and can evolve independently once the API contract is stable.
 
