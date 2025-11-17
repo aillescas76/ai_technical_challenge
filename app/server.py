@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from threading import Lock
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from app.config import VECTOR_STORE_PATH
-from app.llm import chat_completion, embed_texts_with_litellm
+from app.llm import chat_completion, embed_texts_with_litellm, stream_chat_completion
 from app.prompt import ContextChunk, build_grounded_answer_messages, iter_chunk_citations
 from app.schemas import AskRequest, AskResponse, Citation, HealthResponse
 from app.vector_store import SearchResult, VectorStore
@@ -25,6 +28,7 @@ app = FastAPI(
 _vector_store: Optional[VectorStore] = None
 _vector_store_error: Optional[str] = None
 _vector_store_lock = Lock()
+_index_html_cache: Optional[str] = None
 
 
 @app.on_event("startup")
@@ -137,6 +141,11 @@ def _retrieve_context(
     return results[:top_k]
 
 
+def _json_line(payload: dict[str, object]) -> bytes:
+    """Serialize a payload to a JSON line for streaming responses."""
+    return (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+
+
 @app.post("/ask", response_model=AskResponse)
 async def ask_route(request: AskRequest) -> AskResponse:
     """Retrieve relevant context, run the LLM, and return an answer with citations."""
@@ -180,6 +189,73 @@ async def ask_route(request: AskRequest) -> AskResponse:
     return AskResponse(answer=answer, citations=citations)
 
 
+@app.post("/ask/stream")
+async def ask_stream_route(request: AskRequest) -> StreamingResponse:
+    """Stream answer tokens along with citation metadata for the UI."""
+
+    def _respond_with_error(message: str) -> StreamingResponse:
+        def _error_stream() -> Iterable[bytes]:
+            yield _json_line({"event": "error", "message": message})
+
+        return StreamingResponse(_error_stream(), media_type="application/x-ndjson")
+
+    try:
+        results = _retrieve_context(
+            request.question, top_k=request.top_k, airline_filter=request.airline
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.exception("Failed to retrieve context for streaming answer: %s", exc)
+        return _respond_with_error("Failed to retrieve supporting context.")
+
+    if not results:
+        def _no_results_stream() -> Iterable[bytes]:
+            yield _json_line(
+                {"event": "complete", "answer": "No answer found.", "citations": []}
+            )
+
+        return StreamingResponse(_no_results_stream(), media_type="application/x-ndjson")
+
+    contexts = _results_to_context_chunks(results)
+    messages = build_grounded_answer_messages(question=request.question, contexts=contexts)
+    citations = [_result_to_citation(result) for result in results]
+
+    def _stream_answer() -> Iterable[bytes]:
+        yield _json_line(
+            {
+                "event": "citations",
+                "citations": [citation.model_dump() for citation in citations],
+            }
+        )
+        deltas: List[str] = []
+        try:
+            for chunk in stream_chat_completion(messages):
+                deltas.append(chunk)
+                yield _json_line({"event": "chunk", "delta": chunk})
+        except Exception as exc:  # pragma: no cover - network errors
+            logger.exception("Streaming LLM generation failed: %s", exc)
+            yield _json_line({"event": "error", "message": "LLM generation failed."})
+            return
+
+        final_answer = "".join(deltas).strip() or "No answer found."
+        citation_summary = ", ".join(iter_chunk_citations(contexts)) or "no citations"
+        logger.info(
+            "Streamed answer with %d chunks (%s)",
+            len(results),
+            citation_summary,
+        )
+        yield _json_line(
+            {
+                "event": "complete",
+                "answer": final_answer,
+                "citations": [citation.model_dump() for citation in citations],
+            }
+        )
+
+    return StreamingResponse(_stream_answer(), media_type="application/x-ndjson")
+
+
 @app.get("/healthz", response_model=HealthResponse)
 async def health_route() -> HealthResponse:
     """Readiness probe exposing vector store status."""
@@ -189,3 +265,22 @@ async def health_route() -> HealthResponse:
         status_text = "error"
     size = store.size if store else 0
     return HealthResponse(status=status_text, vector_store_size=size)
+
+
+def _load_index_html() -> str:
+    global _index_html_cache
+    if _index_html_cache is None:
+        templates_dir = Path(__file__).with_name("templates")
+        index_path = templates_dir / "index.html"
+        try:
+            _index_html_cache = index_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            logger.warning("UI template missing at %s", index_path)
+            _index_html_cache = "<html><body><h1>UI template missing.</h1></body></html>"
+    return _index_html_cache
+
+
+@app.get("/", response_class=HTMLResponse)
+async def ui_route() -> HTMLResponse:
+    """Serve the lightweight UI for asking questions."""
+    return HTMLResponse(content=_load_index_html())

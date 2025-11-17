@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Airline Policy Assistant</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #111;
+      background: #f8fafc;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1rem 3rem;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 2rem;
+    }
+    form {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      padding: 0.75rem;
+      border: 1px solid #cbd5f5;
+      border-radius: 8px;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #cbd5f5;
+      border-radius: 8px;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .primary {
+      background: #2563eb;
+      color: #fff;
+      margin-right: 0.75rem;
+    }
+    .secondary {
+      background: #e2e8f0;
+      color: #111;
+    }
+    .answer-card, .citations-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    #answer {
+      min-height: 100px;
+      white-space: pre-wrap;
+      font-size: 1.05rem;
+      line-height: 1.5;
+    }
+    #status {
+      font-size: 0.95rem;
+      color: #475569;
+      margin-bottom: 0.75rem;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    li + li {
+      margin-top: 1rem;
+    }
+    .citation-title {
+      font-weight: 600;
+    }
+    .citation-meta {
+      font-size: 0.9rem;
+      color: #475569;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Airline Policy Assistant</h1>
+    <p>Ask a question about airline policies. Answers come from policies stored in this repository with citations for quick verification.</p>
+    <form id="ask-form">
+      <label for="question">Question</label>
+      <textarea id="question" name="question" placeholder="How much checked baggage can I bring on Delta?" required></textarea>
+
+      <div class="controls">
+        <div>
+          <label for="airline">Airline Filter (optional)</label>
+          <input id="airline" name="airline" placeholder="Delta" />
+        </div>
+        <div>
+          <label for="top_k">Top-K (1–8)</label>
+          <input id="top_k" name="top_k" type="number" min="1" max="8" value="5" />
+        </div>
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <button class="primary" type="submit" id="ask-button">Ask</button>
+        <button class="secondary" type="button" id="clear-button">Clear</button>
+      </div>
+    </form>
+
+    <section class="answer-card">
+      <h2>Answer</h2>
+      <div id="status">No question asked yet.</div>
+      <div id="answer"></div>
+    </section>
+
+    <section class="citations-card">
+      <h2>Citations</h2>
+      <ul id="citations"></ul>
+      <p id="no-citations" class="citation-meta">No citations yet.</p>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('ask-form');
+    const answerBox = document.getElementById('answer');
+    const statusBox = document.getElementById('status');
+    const citationsList = document.getElementById('citations');
+    const noCitationsText = document.getElementById('no-citations');
+    const askButton = document.getElementById('ask-button');
+    const clearButton = document.getElementById('clear-button');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const question = (formData.get('question') || '').toString().trim();
+      const airline = (formData.get('airline') || '').toString().trim();
+      let topK = Number(formData.get('top_k') || 5);
+      if (!Number.isFinite(topK)) topK = 5;
+      topK = Math.min(8, Math.max(1, topK));
+
+      if (!question) {
+        statusBox.textContent = 'Please enter a question to continue.';
+        return;
+      }
+
+      resetAnswer();
+      setLoading(true);
+      statusBox.textContent = 'Retrieving answer...';
+
+      const payload = { question, top_k: topK };
+      if (airline) payload.airline = airline;
+
+      try {
+        await streamAnswer(payload);
+      } catch (error) {
+        console.error(error);
+        statusBox.textContent = error?.message || 'An unexpected error occurred.';
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    clearButton.addEventListener('click', () => {
+      form.reset();
+      resetAnswer();
+      statusBox.textContent = 'Cleared. Ask another question!';
+    });
+
+    function setLoading(isLoading) {
+      askButton.disabled = isLoading;
+      askButton.textContent = isLoading ? 'Answering…' : 'Ask';
+    }
+
+    function resetAnswer() {
+      answerBox.textContent = '';
+      citationsList.innerHTML = '';
+      noCitationsText.classList.remove('hidden');
+    }
+
+    async function streamAnswer(payload) {
+      const response = await fetch('/ask/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok || !response.body) {
+        const errorMessage = await response.text();
+        throw new Error(errorMessage || `Request failed (${response.status})`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        buffer = processBuffer(buffer);
+      }
+
+      if (buffer.trim()) {
+        processLine(buffer.trim());
+      }
+    }
+
+    function processBuffer(buffer) {
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        processLine(line);
+      }
+      return buffer;
+    }
+
+    function processLine(line) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return;
+      }
+      try {
+        const event = JSON.parse(trimmed);
+        handleEvent(event);
+      } catch (error) {
+        console.error('Failed to parse line', line, error);
+      }
+    }
+
+    function handleEvent(event) {
+      switch (event.event) {
+        case 'chunk':
+          if (typeof event.delta === 'string') {
+            answerBox.textContent += event.delta;
+          }
+          break;
+        case 'citations':
+          renderCitations(event.citations);
+          break;
+        case 'complete':
+          if (typeof event.answer === 'string') {
+            answerBox.textContent = event.answer;
+          }
+          renderCitations(event.citations);
+          statusBox.textContent = 'Answer ready.';
+          break;
+        case 'error':
+          statusBox.textContent = event.message || 'Unable to generate an answer.';
+          break;
+        default:
+          break;
+      }
+    }
+
+    function renderCitations(citations) {
+      citationsList.innerHTML = '';
+      if (!Array.isArray(citations) || citations.length === 0) {
+        noCitationsText.textContent = 'No supporting citations found.';
+        noCitationsText.classList.remove('hidden');
+        return;
+      }
+
+      noCitationsText.classList.add('hidden');
+      citations.forEach((citation) => {
+        const item = document.createElement('li');
+
+        const title = document.createElement('div');
+        title.className = 'citation-title';
+        title.textContent = `${citation.airline || 'Unknown Airline'} — ${citation.title || 'Untitled'}`;
+        item.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'citation-meta';
+        const preview = citation.snippet ? `“${citation.snippet}”` : 'No preview available.';
+        meta.textContent = preview;
+        const linkTarget = citation.source_url || citation.source_path;
+        if (linkTarget) {
+          const link = document.createElement('a');
+          link.href = linkTarget;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Source';
+          meta.appendChild(document.createTextNode(' '));
+          meta.appendChild(link);
+        }
+        item.appendChild(meta);
+
+        citationsList.appendChild(item);
+      });
+    }
+  </script>
+</body>
+</html>
