@@ -19,5 +19,6 @@ VECTOR_STORE_PATH: Path = Path(
 )
 
 EMBEDDINGS_MODEL: str = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
+LLM_BASE_URL: str | None = os.getenv("LLM_BASE_URL", "http://localhost")
 LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")

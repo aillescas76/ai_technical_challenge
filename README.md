@@ -4,45 +4,31 @@
 
 This project implements a small, retrieval‑augmented generation (RAG) application that answers user questions about airline policies (Delta, United, American Airlines) using an LLM and a vector database. Policy documents in `policies/` (Markdown and PDF) are ingested, chunked, embedded, and indexed for similarity search. The API assembles relevant context and asks the LLM to produce concise, grounded answers with citations to the source documents.
 
-### Ingesting Policies
+### Running Everything with Docker
 
-After installing dependencies (`pip install -r requirements.txt`) and setting `OPENAI_API_KEY` (or another LiteLLM‑supported provider key) in your environment or `.env`, build the processed dataset and FAISS index by running:
+All workflows (ingestion and the future API) are executed via Docker so you never have to install Python dependencies directly on your host.
 
-```bash
-python -m app.ingest
-```
-
-This command will:
-
-1. Load all Markdown and PDF files under `policies/`
-2. Chunk and write them to `data/processed.jsonl`
-3. Generate embeddings via LiteLLM and persist a FAISS index under `data/faiss/`
-
-Run this ingestion step whenever policies change so the RAG system uses the latest content.
-
-### Running with Docker & Docker Compose
-
-You can run the project using the provided `Dockerfile` and `docker-compose.yml`.
-
-1. Build and start the API (once it exists) with hot reload:
+1. Copy `.env.example` to `.env` and fill in the required variables (e.g., `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`). Docker Compose automatically loads this file.
+2. Build the shared image used by every service:
    ```bash
-   docker compose up --build app
+   docker compose build
    ```
-   - The container mounts your local repo, so code changes reflect immediately.
-   - Set your API keys in `.env` (which is referenced by the compose file).
-
-2. Run ingestion inside the container (persists data under `./data`):
+3. Run ingestion inside a disposable container whenever policies change:
    ```bash
-   docker compose run --rm --profile ingest ingest
+   docker compose run --rm ingest
    ```
-   The ingestion profile keeps the ingest container from running automatically when you bring up the main app.
-
-3. Stop all services:
+   This performs the entire pipeline inside Docker: load policy files, write `data/processed.jsonl`, and persist the FAISS artifacts under `data/faiss/`.
+4. Start the FastAPI server (once implemented) with live reload:
+   ```bash
+   docker compose up app
+   ```
+   The container mounts the repo so code edits are reflected immediately.
+5. Tear everything down when finished:
    ```bash
    docker compose down
    ```
 
-We will add setup and run instructions here in a later step.
+No host-side `pip install` steps are required; the Docker image contains all runtime dependencies.
 
 ### Documentation
 
