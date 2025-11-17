@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 
@@ -13,12 +15,57 @@ POLICIES_DIR: Path = BASE_DIR / "policies"
 DATA_DIR: Path = BASE_DIR / "data"
 PROCESSED_DOCS_PATH: Path = DATA_DIR / "processed.jsonl"
 
+EVAL_DATASET_PATH: Path = Path(
+    os.getenv("EVAL_DATASET_PATH", str(BASE_DIR / "docs" / "evals" / "questions.jsonl"))
+)
+
 _default_vector_store_dir = DATA_DIR / "faiss"
 VECTOR_STORE_PATH: Path = Path(
     os.getenv("VECTOR_STORE_PATH", str(_default_vector_store_dir))
 )
 
 EMBEDDINGS_MODEL: str = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
-LLM_BASE_URL: str | None = os.getenv("LLM_BASE_URL", "http://localhost")
+LLM_BASE_URL: str | None = os.getenv("LLM_BASE_URL") or None
 LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
+
+LLM_TIMEOUT_SECONDS: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+EMBEDDINGS_TIMEOUT_SECONDS: float = float(os.getenv("EMBEDDINGS_TIMEOUT_SECONDS", "30"))
+
+TOKEN_ENCODING_NAME: str = os.getenv("TOKEN_ENCODING_NAME", "cl100k_base")
+
+ASK_CACHE_MAX_ITEMS: int = int(os.getenv("ASK_CACHE_MAX_ITEMS", "128"))
+ASK_CACHE_TTL_SECONDS: int = int(os.getenv("ASK_CACHE_TTL_SECONDS", "600"))
+
+LANGFUSE_PUBLIC_KEY: str | None = os.getenv("LANGFUSE_PUBLIC_KEY")
+LANGFUSE_SECRET_KEY: str | None = os.getenv("LANGFUSE_SECRET_KEY")
+LANGFUSE_HOST: str | None = os.getenv("LANGFUSE_HOST")
+
+_DEFAULT_MODEL_COSTS: Dict[str, Dict[str, float]] = {
+    "gpt-4o-mini": {"prompt": 0.00015, "completion": 0.00060},
+    "text-embedding-3-small": {"prompt": 0.00002},
+}
+
+
+def _load_model_costs() -> Dict[str, Dict[str, float]]:
+    raw = os.getenv("MODEL_COST_OVERRIDES")
+    if not raw:
+        return _DEFAULT_MODEL_COSTS
+    try:
+        overrides: Dict[str, Dict[str, Any]] = json.loads(raw)
+    except json.JSONDecodeError:
+        return _DEFAULT_MODEL_COSTS
+    merged: Dict[str, Dict[str, float]] = dict(_DEFAULT_MODEL_COSTS)
+    for model, values in overrides.items():
+        costs: Dict[str, float] = {}
+        for cost_key, cost_value in values.items():
+            try:
+                costs[str(cost_key)] = float(cost_value)
+            except (TypeError, ValueError):
+                continue
+        if costs:
+            merged[model] = costs
+    return merged
+
+
+MODEL_COST_LOOKUP: Dict[str, Dict[str, float]] = _load_model_costs()

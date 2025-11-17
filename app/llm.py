@@ -5,7 +5,13 @@ from typing import Any, Iterable, List, Literal, Optional, Sequence, TypedDict
 
 import litellm
 
-from app.config import EMBEDDINGS_MODEL, LLM_BASE_URL, LLM_MODEL
+from app.config import (
+    EMBEDDINGS_MODEL,
+    EMBEDDINGS_TIMEOUT_SECONDS,
+    LLM_BASE_URL,
+    LLM_MODEL,
+    LLM_TIMEOUT_SECONDS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -69,10 +75,12 @@ def chat_completion(
     model: Optional[str] = None,
     temperature: float = 0.2,
     max_tokens: Optional[int] = None,
+    timeout: Optional[float] = None,
     **kwargs: object,
 ) -> str:
     """Call LiteLLM for a non-streaming chat completion and return the text content."""
     model_name = _get_model_name(model)
+    request_timeout = timeout or LLM_TIMEOUT_SECONDS
     try:
         response = _run_completion(
             messages,
@@ -80,6 +88,7 @@ def chat_completion(
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
+            timeout=request_timeout,
             extra_kwargs=dict(kwargs),
         )
     except Exception:
@@ -95,10 +104,12 @@ def stream_chat_completion(
     model: Optional[str] = None,
     temperature: float = 0.2,
     max_tokens: Optional[int] = None,
+    timeout: Optional[float] = None,
     **kwargs: object,
 ) -> Iterable[str]:
     """Call LiteLLM for a streaming chat completion and yield content chunks."""
     model_name = _get_model_name(model)
+    request_timeout = timeout or LLM_TIMEOUT_SECONDS
     try:
         response_stream = _run_completion(
             messages,
@@ -106,6 +117,7 @@ def stream_chat_completion(
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            timeout=request_timeout,
             extra_kwargs=dict(kwargs),
         )
     except Exception:
@@ -122,6 +134,7 @@ def embed_texts_with_litellm(
     texts: Sequence[str],
     *,
     model: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> List[List[float]]:
     """Create embeddings for a batch of texts using LiteLLM's embeddings API."""
     model_name = _get_embeddings_model_name(model)
@@ -129,7 +142,12 @@ def embed_texts_with_litellm(
         return []
 
     try:
-        response = _client.embedding(model=model_name, input=list(texts))
+        request_timeout = timeout or EMBEDDINGS_TIMEOUT_SECONDS
+        response = _client.embedding(
+            model=model_name,
+            input=list(texts),
+            timeout=request_timeout,
+        )
     except Exception:
         logger.exception("LiteLLM embeddings request failed for model %s", model_name)
         raise
@@ -149,6 +167,7 @@ def _run_completion(
     temperature: float,
     max_tokens: Optional[int],
     stream: bool,
+    timeout: float,
     extra_kwargs: dict[str, object],
 ) -> Any:
     if "stream" in extra_kwargs:
@@ -159,6 +178,7 @@ def _run_completion(
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": stream,
+        "timeout": timeout,
     }
     payload.update(extra_kwargs)
     return _client.completion(**payload)

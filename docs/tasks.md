@@ -156,18 +156,23 @@ This workflow focuses on usability and can evolve independently once the API con
 - Basic performance metrics (latency and cost) captured in logs or eval output.
 
 **Tasks**
-- [ ] Create an initial eval set (≥ 30 questions) spanning baggage, pets, children, pregnancy, special cases; include ambiguous airline mentions.
-- [ ] Label gold answers, citations (airline + doc title), and expected refusals.
-- [ ] Build a `pytest` eval harness to run retrieval + generation and record JSONL results.
-- [ ] Compute retrieval metrics (Recall@k, MRR), citation correctness, groundedness, refusals.
-- [ ] Track latency (P50/P95) and token/cost per request.
-- [ ] Integrate LangFuse Python SDK: log each eval run, attach metrics, citations, and latency/cost metadata.
-- [ ] Store LangFuse credentials via `.env` and document the required env vars in `app/config.py` / `.env.example`.
-- [ ] Use evals to select models/params (speed/price vs. quality), then lock defaults.
-- [ ] Enable response streaming to reduce perceived latency.
-- [ ] Add in-memory caching for repeated queries and airline-filtered lookups.
-- [ ] Tune `top_k`, chunk size/overlap, and re-ranking to hit reasonable P50/P95 latency targets.
-- [ ] Add strict timeouts and fallbacks for any optional network activity.
+- [x] Create an initial eval set (≥ 30 questions) spanning baggage, pets, children, pregnancy, special cases; include ambiguous airline mentions.
+- [x] Label gold answers, citations (airline + doc title), and expected refusals.
+- [x] Build a `pytest` eval harness to run retrieval + generation and record JSONL results.
+- [x] Compute retrieval metrics (Recall@k, MRR), citation correctness, groundedness, refusals.
+- [x] Track latency (P50/P95) and token/cost per request.
+- [x] Integrate LangFuse Python SDK: log each eval run, attach metrics, citations, and latency/cost metadata.
+- [x] Store LangFuse credentials via `.env` and document the required env vars in `app/config.py` / `.env.example`.
+- [x] Use evals to select models/params (speed/price vs. quality), then lock defaults.
+- [x] Enable response streaming to reduce perceived latency.
+- [x] Add in-memory caching for repeated queries and airline-filtered lookups.
+- [x] Tune `top_k`, chunk size/overlap, and re-ranking to hit reasonable P50/P95 latency targets.
+- [x] Add strict timeouts and fallbacks for any optional network activity.
+
+**Notes**
+- Eval dataset source of truth: `docs/evals/questions.jsonl` (35 labeled prompts). Harness command: `python -m app.eval --dataset docs/evals/questions.jsonl`.
+- Eval runs emit JSONL under `data/evals/` and report Recall@k, MRR, citation precision/recall, refusal accuracy, latency P50/P95, token totals, and estimated USD costs. LangFuse logging is optional but ready once `LANGFUSE_*` vars are set.
+- `/ask` now supports SSE streaming via `stream: true`, includes caching (configurable via `ASK_CACHE_*` env vars), and enforces LiteLLM timeouts for embeddings + completions.
 
 This workflow makes the RAG system “test-like complete” with measurable quality and latency.
 

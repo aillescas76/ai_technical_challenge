@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import json
 import logging
 from threading import Lock
-from typing import List, Optional
+from typing import Iterator, Optional
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from app.config import VECTOR_STORE_PATH
-from app.llm import chat_completion, embed_texts_with_litellm
-from app.prompt import ContextChunk, build_grounded_answer_messages, iter_chunk_citations
-from app.schemas import AskRequest, AskResponse, Citation, HealthResponse
-from app.vector_store import SearchResult, VectorStore
+from app.prompt import iter_chunk_citations
+from app.rag import RagAnswer, RagEngine, RagRequest
+from app.schemas import AskRequest, AskResponse, HealthResponse
+from app.vector_store import VectorStore
 
 
 logger = logging.getLogger(__name__)
-
 
 app = FastAPI(
     title="Airline Policy RAG API",
@@ -25,6 +26,7 @@ app = FastAPI(
 _vector_store: Optional[VectorStore] = None
 _vector_store_error: Optional[str] = None
 _vector_store_lock = Lock()
+_rag_engine = RagEngine(lambda: _get_vector_store_or_error())
 
 
 @app.on_event("startup")
@@ -70,114 +72,100 @@ def _get_vector_store_or_error() -> VectorStore:
     return store
 
 
-def _result_to_citation(result: SearchResult) -> Citation:
-    metadata = result.metadata or {}
-    snippet = _build_snippet(result.text)
-    return Citation(
-        id=result.id,
-        airline=str(metadata.get("airline", "Unknown Airline")),
-        title=str(metadata.get("title", "Unknown Document")),
-        source_path=str(metadata.get("source_path", "")),
-        source_url=metadata.get("source_url"),
-        chunk_index=metadata.get("chunk_index"),
-        score=float(result.score),
-        snippet=snippet,
+@app.post("/ask", response_model=AskResponse)
+async def ask_route(request: AskRequest):
+    """Retrieve relevant context, run the LLM, and return an answer with citations."""
+    rag_request = RagRequest(
+        question=request.question,
+        top_k=request.top_k,
+        airline=request.airline,
     )
 
-
-def _build_snippet(text: str, limit: int = 320) -> str:
-    condensed = " ".join(text.split())
-    if len(condensed) <= limit:
-        return condensed
-    cutoff = condensed.rfind(" ", 0, limit)
-    if cutoff == -1:
-        cutoff = limit
-    return condensed[:cutoff].rstrip() + "..."
-
-
-def _results_to_context_chunks(results: List[SearchResult]) -> List[ContextChunk]:
-    """Convert raw search results into prompt-friendly context chunks."""
-    contexts: List[ContextChunk] = []
-    for result in results:
-        metadata = result.metadata or {}
-        chunk_id = metadata.get("id")
-        if chunk_id is None and metadata.get("chunk_index") is not None:
-            chunk_id = str(metadata["chunk_index"])
-        contexts.append(
-            ContextChunk(
-                content=result.text,
-                airline=str(metadata.get("airline", "Unknown Airline")),
-                title=str(metadata.get("title", "Unknown Document")),
-                source_path=str(metadata.get("source_path", "")),
-                chunk_id=str(chunk_id) if chunk_id is not None else None,
-                source_url=metadata.get("source_url"),
-            )
+    if request.stream:
+        return StreamingResponse(
+            _iter_streaming_response(rag_request),
+            media_type="text/event-stream",
         )
-    return contexts
+
+    answer = _run_rag_with_handling(rag_request)
+    _log_answer("json", answer, request.airline)
+    return AskResponse(answer=answer.answer, citations=answer.citations)
 
 
-def _retrieve_context(
-    question: str, *, top_k: int, airline_filter: Optional[str]
-) -> List[SearchResult]:
-    store = _get_vector_store_or_error()
-    embeddings = embed_texts_with_litellm([question])
-    if not embeddings:
-        raise RuntimeError("Embeddings provider returned no results.")
-    query_embedding = embeddings[0]
-
-    search_k = top_k if not airline_filter else top_k * 3
-    results = store.search_by_embedding(query_embedding, top_k=search_k)
-    if airline_filter:
-        normalized_filter = airline_filter.strip().lower()
-        results = [
-            result
-            for result in results
-            if str(result.metadata.get("airline", "")).lower() == normalized_filter
-        ]
-    return results[:top_k]
-
-
-@app.post("/ask", response_model=AskResponse)
-async def ask_route(request: AskRequest) -> AskResponse:
-    """Retrieve relevant context, run the LLM, and return an answer with citations."""
+def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
     try:
-        results = _retrieve_context(
-            request.question, top_k=request.top_k, airline_filter=request.airline
-        )
+        return _rag_engine.answer(rag_request)
     except HTTPException:
         raise
-    except Exception as exc:  # pragma: no cover - defensive logging
-        logger.exception("Failed to retrieve context: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve supporting context.",
-        ) from exc
-
-    if not results:
-        return AskResponse(answer="No answer found.", citations=[])
-
-    contexts = _results_to_context_chunks(results)
-    messages = build_grounded_answer_messages(question=request.question, contexts=contexts)
-    try:
-        answer = chat_completion(messages).strip()
     except Exception as exc:  # pragma: no cover - network errors
-        logger.exception("LLM generation failed: %s", exc)
+        logger.exception("RAG pipeline failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="LLM generation failed."
         ) from exc
 
-    if not answer:
-        answer = "No answer found."
 
-    citation_summary = ", ".join(iter_chunk_citations(contexts)) or "no citations"
+def _iter_streaming_response(rag_request: RagRequest) -> Iterator[str]:
+    try:
+        for event_type, payload in _rag_engine.stream(rag_request):
+            if event_type == "token":
+                yield _format_sse({"type": "token", "text": payload})
+                continue
+            answer = payload
+            _log_answer("stream", answer, rag_request.airline)
+            response_body = AskResponse(
+                answer=answer.answer,
+                citations=answer.citations,
+            )
+            yield _format_sse(
+                {
+                    "type": "final",
+                    "answer": response_body.answer,
+                    "citations": [
+                        citation.model_dump() for citation in response_body.citations
+                    ],
+                    "metrics": _serialize_metrics(answer),
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover
+        logger.exception("Streaming answer failed: %s", exc)
+        yield _format_sse({"type": "error", "message": "LLM streaming failed."})
+
+
+def _format_sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _serialize_metrics(answer: RagAnswer) -> dict:
+    return {
+        "latency_ms": answer.latency_ms,
+        "tokens": {
+            "prompt": answer.tokens.prompt,
+            "completion": answer.tokens.completion,
+            "embedding": answer.tokens.embedding,
+        },
+        "cost_usd": {
+            "prompt": answer.costs.prompt_usd,
+            "completion": answer.costs.completion_usd,
+            "embedding": answer.costs.embedding_usd,
+            "total": answer.costs.total,
+        },
+        "cache_hit": answer.from_cache,
+    }
+
+
+def _log_answer(channel: str, answer: RagAnswer, airline: Optional[str]) -> None:
+    citation_summary = ", ".join(iter_chunk_citations(answer.contexts)) or "no citations"
     logger.info(
-        "Answered question with %d chunks (%s)",
-        len(results),
+        "[%s] Answered in %.1f ms with %d chunks (%s) cache=%s airline_filter=%s",
+        channel,
+        answer.latency_ms,
+        len(answer.citations),
         citation_summary,
+        answer.from_cache,
+        airline or "*",
     )
-
-    citations = [_result_to_citation(result) for result in results]
-    return AskResponse(answer=answer, citations=citations)
 
 
 @app.get("/healthz", response_model=HealthResponse)

@@ -34,3 +34,21 @@ No host-side `pip install` steps are required; the Docker image contains all run
 
 - Full challenge description (original README.md file): [docs/challenge.md](docs/challenge.md)
 - Analysis and proposed solution: [docs/analysis.md](docs/analysis.md)
+
+### API & Streaming
+
+- `POST /ask` accepts a JSON body with `question`, optional `top_k` (≤8), optional `airline`, and an optional `stream` flag. Responses include concise LLM answers plus structured citations.
+- Setting `stream: true` upgrades the response to a Server-Sent Events stream (`text/event-stream`). Each event contains incremental tokens followed by a `final` payload with the rendered answer, citations, token counts, and latency/cost metadata.
+- The backend keeps a short-lived in-memory cache keyed by normalized question + airline filter so repeated queries are served instantly without re-calling the LLM.
+
+### Evaluation Harness
+
+- The eval dataset lives at `docs/evals/questions.jsonl` (35 curated questions covering baggage, pets, children, pregnancy, and a refusal scenario). Each record includes gold citations and whether a refusal is expected.
+- Run the harness locally with:
+
+  ```bash
+  python -m app.eval --dataset docs/evals/questions.jsonl --limit 10
+  ```
+
+  Results are written to `data/evals/run-*.jsonl` (git-ignored) and the summary metrics (Recall@k, MRR, citation precision/recall, refusal accuracy, latency P50/P95, token totals, and USD cost estimates) are printed and logged.
+- The harness reports optional LangFuse traces when `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_HOST` are configured. Each eval case is logged with its metrics, citations, and latency/cost metadata so later workflows (F/H) can inspect regressions.
