@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, status
 
 from app.config import VECTOR_STORE_PATH
 from app.llm import chat_completion, embed_texts_with_litellm
-from app.prompt import build_rag_messages, summarize_context_for_logging
+from app.prompt import ContextChunk, build_grounded_answer_messages, iter_chunk_citations
 from app.schemas import AskRequest, AskResponse, Citation, HealthResponse
 from app.vector_store import SearchResult, VectorStore
 
@@ -95,6 +95,27 @@ def _build_snippet(text: str, limit: int = 320) -> str:
     return condensed[:cutoff].rstrip() + "..."
 
 
+def _results_to_context_chunks(results: List[SearchResult]) -> List[ContextChunk]:
+    """Convert raw search results into prompt-friendly context chunks."""
+    contexts: List[ContextChunk] = []
+    for result in results:
+        metadata = result.metadata or {}
+        chunk_id = metadata.get("id")
+        if chunk_id is None and metadata.get("chunk_index") is not None:
+            chunk_id = str(metadata["chunk_index"])
+        contexts.append(
+            ContextChunk(
+                content=result.text,
+                airline=str(metadata.get("airline", "Unknown Airline")),
+                title=str(metadata.get("title", "Unknown Document")),
+                source_path=str(metadata.get("source_path", "")),
+                chunk_id=str(chunk_id) if chunk_id is not None else None,
+                source_url=metadata.get("source_url"),
+            )
+        )
+    return contexts
+
+
 def _retrieve_context(
     question: str, *, top_k: int, airline_filter: Optional[str]
 ) -> List[SearchResult]:
@@ -135,7 +156,8 @@ async def ask_route(request: AskRequest) -> AskResponse:
     if not results:
         return AskResponse(answer="No answer found.", citations=[])
 
-    messages = build_rag_messages(request.question, results)
+    contexts = _results_to_context_chunks(results)
+    messages = build_grounded_answer_messages(question=request.question, contexts=contexts)
     try:
         answer = chat_completion(messages).strip()
     except Exception as exc:  # pragma: no cover - network errors
@@ -147,10 +169,11 @@ async def ask_route(request: AskRequest) -> AskResponse:
     if not answer:
         answer = "No answer found."
 
+    citation_summary = ", ".join(iter_chunk_citations(contexts)) or "no citations"
     logger.info(
         "Answered question with %d chunks (%s)",
         len(results),
-        summarize_context_for_logging(results),
+        citation_summary,
     )
 
     citations = [_result_to_citation(result) for result in results]

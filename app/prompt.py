@@ -1,63 +1,85 @@
+"""Prompt templates for grounded RAG answers with citations."""
+
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from dataclasses import dataclass
+from typing import Iterable, List, Sequence
 
 from app.llm import ChatMessage
-from app.vector_store import SearchResult
 
 
-SYSTEM_PROMPT = """You are an assistant that answers questions about airline policies.
-You must follow these rules:
-- Use only the facts contained in the supplied context sections.
-- Cite supporting evidence inline as [Airline – Title] after each relevant sentence.
-- If the context is empty or does not contain the answer, respond with "No answer found."
-- Keep answers short (2–4 sentences or concise bullets) and avoid speculation.
-- Prefer the airline name and document title exactly as provided in the context metadata."""
+DEFAULT_SYSTEM_PROMPT = """You are an airline policy specialist.
+Use ONLY the provided policy excerpts to answer.
+If the excerpts do not answer the question, reply with: "No answer found based on available policies." without additional text.
+Write concise paragraphs or short bullet points.
+Every factual statement must cite the airline and document title in brackets like [Airline – Document Title].
+Never fabricate airlines, titles, or URLs.
+"""
 
 
-def format_context_sections(results: Sequence[SearchResult]) -> str:
-    """Convert search results into a numbered context block for prompting."""
-    sections = []
-    for idx, result in enumerate(results, start=1):
-        metadata = result.metadata or {}
-        airline = metadata.get("airline", "Unknown Airline")
-        title = metadata.get("title", "Unknown Document")
-        chunk_index = metadata.get("chunk_index")
-        header_parts = [f"[{idx}] Airline: {airline}", f"Title: {title}"]
-        if chunk_index is not None:
-            header_parts.append(f"Chunk: {chunk_index}")
-        header = " | ".join(header_parts)
-        body = result.text.strip()
-        if not body:
-            continue
-        section_text = f"{header}\n{body}"
-        sections.append(section_text)
-    return "\n\n".join(sections)
+@dataclass(slots=True)
+class ContextChunk:
+    """Small container describing a retrieved policy chunk."""
+
+    content: str
+    airline: str
+    title: str
+    source_path: str
+    chunk_id: str | None = None
+    source_url: str | None = None
 
 
-def build_rag_messages(question: str, results: Sequence[SearchResult]) -> list[ChatMessage]:
-    """Create chat messages for the RAG interaction with the LLM."""
-    context = format_context_sections(results)
-    if not context:
-        context = "No context available."
-    user_prompt = (
-        "Use the context to answer the airline policy question.\n\n"
-        f"Question: {question.strip()}\n\n"
-        f"Context:\n{context}\n\n"
-        "Answer:"
+def build_grounded_answer_messages(
+    *,
+    question: str,
+    contexts: Sequence[ContextChunk],
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+) -> List[ChatMessage]:
+    """Return chat messages for answering a user question with grounded context."""
+
+    context_block = _format_context_block(contexts)
+    user_content = "\n\n".join(
+        (
+            f"Question:\n{question.strip()}" if question else "Question:\n",
+            "Policy Excerpts:\n" + context_block,
+            "Instructions:\n"
+            "- Base the answer ONLY on the excerpts above.\n"
+            "- Cite each statement with [Airline – Document Title].\n"
+            "- If nothing answers the question, respond with \"No answer found based on available policies.\"",
+        )
     )
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
+        ChatMessage(role="system", content=system_prompt.strip()),
+        ChatMessage(role="user", content=user_content),
     ]
 
 
-def summarize_context_for_logging(results: Iterable[SearchResult]) -> str:
-    """Return a compact summary of context used, suitable for logs."""
-    parts = []
-    for result in results:
-        metadata = result.metadata or {}
-        airline = metadata.get("airline", "Unknown")
-        title = metadata.get("title", "Unknown")
-        parts.append(f"{airline} – {title}")
-    return ", ".join(parts)
+def _format_context_block(contexts: Sequence[ContextChunk]) -> str:
+    if not contexts:
+        return "No policy excerpts available."
+
+    formatted_chunks: List[str] = []
+    for index, chunk in enumerate(contexts, start=1):
+        lines: List[str] = [
+            f"[{index}] Airline: {chunk.airline}",
+            f"Title: {chunk.title}",
+            f"Source path: {chunk.source_path}",
+        ]
+        if chunk.chunk_id:
+            lines.append(f"Chunk ID: {chunk.chunk_id}")
+        if chunk.source_url:
+            lines.append(f"Source URL: {chunk.source_url}")
+        lines.append("Excerpt:\n" + chunk.content.strip())
+        formatted_chunks.append("\n".join(lines).strip())
+    return "\n\n".join(formatted_chunks)
+
+
+def iter_chunk_citations(contexts: Sequence[ContextChunk]) -> Iterable[str]:
+    """Return unique citation labels for the provided contexts."""
+
+    seen: set[str] = set()
+    for chunk in contexts:
+        label = f"{chunk.airline} – {chunk.title}"
+        if label not in seen:
+            seen.add(label)
+            yield label
