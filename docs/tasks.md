@@ -81,9 +81,9 @@ This workflow provides the data + index foundation that the API and LLM workflow
 **Tasks**
 - [x] Implement embeddings client via LiteLLM (`text-embedding-3-small`, fallback to `all-MiniLM-L6-v2`).
 - [x] Implement chat client via LiteLLM (`gpt-4o-mini` by default) with streaming support.
-- [ ] Create grounded answer prompt with citation rules (airline + doc title, optional URL) and refusal behavior.
+- [x] Create grounded answer prompt with citation rules (airline + doc title, optional URL) and refusal behavior. (Implemented `app/prompt.py` with `build_grounded_answer_messages` and `ContextChunk` helpers.)
 - [x] Add configuration support for `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`, `VECTOR_STORE_PATH`.
-- [ ] Add unit tests with stubbed embeddings/LLM to avoid network usage.
+- [x] Add unit tests with stubbed embeddings/LLM to avoid network usage. (See `tests/test_llm_prompt.py` for LiteLLM stubs and prompt assertions.)
 
 This workflow can run largely in parallel with Workflow B, coordinating only on the embedding vector size for FAISS.
 
