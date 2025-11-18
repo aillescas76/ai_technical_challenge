@@ -223,7 +223,6 @@ async def async_embed_texts_with_litellm(
             "input": list(texts),
             "timeout": request_timeout,
         }
-        _maybe_apply_provider_override(model_name, payload)
         response = await _client.aembedding(**payload)
     except Exception:
         logger.exception("LiteLLM async embeddings request failed for model %s", model_name)
@@ -255,7 +254,6 @@ def embed_texts_with_litellm(
             "input": list(texts),
             "timeout": request_timeout,
         }
-        _maybe_apply_provider_override(model_name, payload)
         response = _client.embedding(**payload)
     except Exception:
         logger.exception("LiteLLM embeddings request failed for model %s", model_name)
@@ -290,7 +288,6 @@ async def _run_async_completion(
         "timeout": timeout,
     }
     payload.update(extra_kwargs)
-    _maybe_apply_provider_override(model_name, payload)
     return await _client.acompletion(**payload)
 
 
@@ -348,7 +345,6 @@ def _run_completion(
         "timeout": timeout,
     }
     payload.update(extra_kwargs)
-    _maybe_apply_provider_override(model_name, payload)
     return _client.completion(**payload)
 
 
@@ -414,15 +410,6 @@ def _get_attribute(obj: Any, attribute: str, *, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(attribute, default)
     return getattr(obj, attribute, default)
-
-
-def _maybe_apply_provider_override(model_name: str, payload: dict[str, Any]) -> None:
-    """Attach LiteLLM provider hint when configured for a given model."""
-    if "custom_llm_provider" in payload:
-        return
-    provider = LLM_PROVIDER_OVERRIDES.get(model_name)
-    if provider:
-        payload["custom_llm_provider"] = provider
 
 
 def _candidate_models(explicit_model: Optional[str]) -> List[str]:
