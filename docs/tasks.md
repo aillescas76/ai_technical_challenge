@@ -194,18 +194,18 @@ This workflow makes the RAG system “test-like complete” with measurable qual
 - Final “release-ready” repo state for the technical challenge.
 
 **Tasks**
-- [ ] Add structured logging (no secrets) and meaningful error messages.
-- [ ] Surface user-friendly failures (e.g., “insufficient evidence” responses).
-- [ ] Add basic counters/metrics (requests, errors) for local debugging.
-- [ ] Load secrets via environment; never commit API keys.
-- [ ] Sanitize/validate user inputs; consider basic rate limiting.
-- [ ] Update `README.md` with setup/run instructions and architecture overview.
-- [ ] Document design choices and tradeoffs (RAG, models, vector store).
-- [ ] Provide example Q&A for the four sample queries with citations.
-- [ ] Note limitations and how external links are handled.
-- [ ] Manual sanity test on key queries; verify citations and links.
-- [ ] Ensure `data/` and secrets are ignored; repo is clean.
-- [ ] Tag initial version and prepare review notes (or equivalent summary for reviewers).
+- [x] Add structured logging (no secrets) and meaningful error messages.
+- [x] Surface user-friendly failures (e.g., “insufficient evidence” responses).
+- [x] Add basic counters/metrics (requests, errors) for local debugging.
+- [x] Load secrets via environment; never commit API keys.
+- [x] Sanitize/validate user inputs; consider basic rate limiting.
+- [x] Update `README.md` with setup/run instructions and architecture overview.
+- [x] Document design choices and tradeoffs (RAG, models, vector store).
+- [x] Provide example Q&A for the four sample queries with citations.
+- [x] Note limitations and how external links are handled.
+- [x] Manual sanity test on key queries; verify citations and links.
+- [x] Ensure `data/` and secrets are ignored; repo is clean.
+- [x] Tag initial version and prepare review notes (or equivalent summary for reviewers).
 
 This workflow ensures the repository is cohesive, well-documented, and ready for review as a complete RAG system.
 
