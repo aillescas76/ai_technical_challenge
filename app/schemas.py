@@ -58,3 +58,10 @@ class HealthResponse(BaseModel):
 
     status: str
     vector_store_size: int
+
+
+class Metrics(BaseModel):
+    requests_total: int
+    requests_current: int
+    errors_total: int
+    uptime_seconds: float

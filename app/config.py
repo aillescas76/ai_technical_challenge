@@ -83,6 +83,11 @@ TOKEN_ENCODING_NAME: str = os.getenv("TOKEN_ENCODING_NAME", "cl100k_base")
 ASK_CACHE_MAX_ITEMS: int = int(os.getenv("ASK_CACHE_MAX_ITEMS", "128"))
 ASK_CACHE_TTL_SECONDS: int = int(os.getenv("ASK_CACHE_TTL_SECONDS", "600"))
 
+RATE_LIMIT_TTL_SECONDS: int = int(os.getenv("RATE_LIMIT_TTL_SECONDS", "60"))
+RATE_LIMIT_MAX_REQUESTS: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "60"))
+
+LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+
 LANGFUSE_PUBLIC_KEY: str | None = os.getenv("LANGFUSE_PUBLIC_KEY")
 LANGFUSE_SECRET_KEY: str | None = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_HOST: str | None = os.getenv("LANGFUSE_HOST")

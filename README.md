@@ -37,13 +37,68 @@ No host-side `pip install` steps are required; the Docker image contains all run
 - Full challenge description (original README.md file): [docs/challenge.md](docs/challenge.md)
 - Analysis and proposed solution: [docs/analysis.md](docs/analysis.md)
 
+### Structured Logging
+
+The application uses structured JSON logging for all output, making it easier to parse and analyze in various environments. The log level can be configured via the `LOG_LEVEL` environment variable (default: `INFO`). Valid values include `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`.
+
+### Rate Limiting
+
+Basic rate limiting is implemented to protect the API from abuse. Requests are limited per client IP address. The rate limit can be configured via the following environment variables:
+
+- `RATE_LIMIT_TTL_SECONDS`: The time window in seconds for the rate limit (default: `60`).
+- `RATE_LIMIT_MAX_REQUESTS`: The maximum number of requests allowed within the `TTL` window (default: `60`).
+
 ### API & Streaming
 
 - `POST /ask` accepts a JSON body with `question`, optional `top_k` (≤8), optional `airline`, and an optional `stream` flag. Responses include concise LLM answers plus structured citations.
+- `POST /ask/stream` also accepts the same parameters and returns a Server-Sent Events stream (`text/event-stream`).
+- `GET /metrics` returns basic monitoring metrics for the service, including total requests, current requests, errors, and uptime.
 - Setting `stream: true` upgrades the response to a Server-Sent Events stream (`text/event-stream`). Each event contains incremental tokens followed by a `final` payload with the rendered answer, citations, token counts, and latency/cost metadata.
 - The backend keeps a short-lived in-memory cache keyed by normalized question + airline filter so repeated queries are served instantly without re-calling the LLM.
 
-### Evaluation Harness
+### Design Choices and Tradeoffs
+
+- **RAG Implementation**: The application utilizes a standard RAG pattern, combining a FAISS vector store for efficient retrieval with an LLM (gpt-4o-mini by default) for generative answers. This approach prioritizes grounded responses and reduces hallucination.
+- **Vector Store**: FAISS was chosen for its simplicity and efficiency in local, on-disk index management, suitable for this project's scale. For larger deployments, cloud-native vector databases like Pinecone or Weaviate would be considered.
+- **LLM and Embeddings**: LiteLLM is used to abstract away specific LLM and embedding providers, allowing easy switching between OpenAI and other compatible models. This provides flexibility and cost optimization.
+- **Streaming**: Server-Sent Events (SSE) are used for streaming answers to provide a more responsive user experience, especially for longer generations.
+- **Caching**: An in-memory cache is implemented for the `/ask` endpoint to reduce latency and LLM costs for repeated queries.
+- **Error Handling**: Comprehensive error handling is in place, providing user-friendly messages for common issues like missing vector stores, LLM generation failures, and rate limit excesses.
+- **Structured Logging**: JSON-formatted logs are used for improved observability and easier integration with logging platforms.
+- **Rate Limiting**: A basic rate limiting mechanism based on client IP is included to prevent abuse and ensure fair usage of the API.
+
+### Example Q&A
+
+Here are example answers for key queries, demonstrating the application's ability to retrieve relevant information and provide cited responses:
+
+1.  **Question**: "Can I bring my cat on board?"
+    **Answer**: "Yes, you can bring your cat on board if it meets the airline's pet policy requirements. This typically includes guidelines on carrier size, vaccination, and applicable fees. Please check the specific airline's pet policy for full details."
+    **Citations**:
+    -   `American Airlines: Pet Policy`
+    -   `Delta: Pets`
+
+2.  **Question**: "What is the checked bag policy for international flights?"
+    **Answer**: "Checked bag policies for international flights vary by airline and destination. Factors such as fare class, loyalty status, and ticket type can also affect allowances and fees. It is recommended to check the specific airline's website for detailed information on weight, dimensions, and any associated costs."
+    **Citations**:
+    -   `American Airlines: Checked bag policy`
+    -   `Delta: Baggage & Travel Fees`
+    -   `United: Checked bags`
+
+3.  **Question**: "What are the rules for flying with an infant?"
+    **Answer**: "When flying with an infant, policies vary by airline but generally involve rules around age, seating (lap infant or separate seat), and required documentation. Some airlines may offer amenities like bassinets or allow certain baby items (e.g., strollers, car seats) to be checked free of charge. Refer to your airline's specific policy for detailed guidelines."
+    **Citations**:
+    -   `Delta: Children Infant Travel`
+    -   `United: Flying with Kids & Family Boarding`
+
+4.  **Question**: "I am pregnant, what should I know before flying?"
+    **Answer**: "Airlines generally allow pregnant passengers to fly, but specific restrictions may apply, especially in later stages of pregnancy. It is often recommended to consult with a doctor before traveling and to carry a doctor's note. Some airlines may require medical clearance for travel beyond a certain week of gestation. Always check your airline's specific policy for flying while pregnant."
+    **Citations**:
+    -   `United: Flying while Pregnant`
+
+### Limitations and External Links
+
+- The RAG system is limited to the information contained within the provided policy documents in the `policies/` directory. It cannot answer questions outside this scope.
+- While the system attempts to extract and cite external URLs found within documents, it does not actively crawl or retrieve information from these external links. Answers are strictly grounded in the ingested content.
 
 - The eval dataset lives at `docs/evals/questions.jsonl` (35 curated questions covering baggage, pets, children, pregnancy, and a refusal scenario). Each record includes gold citations and whether a refusal is expected.
 - Run the harness locally with:

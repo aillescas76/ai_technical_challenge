@@ -3,15 +3,17 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
+import json_logging
 import tiktoken
 from pypdf import PdfReader
 
 from app.airlines import canonical_airline_name
-from app.config import EMBEDDINGS_MODEL, POLICIES_DIR, PROCESSED_DOCS_PATH, VECTOR_STORE_PATH
+from app.config import EMBEDDINGS_MODEL, LOG_LEVEL, POLICIES_DIR, PROCESSED_DOCS_PATH, VECTOR_STORE_PATH
 from app.llm import embed_texts_with_litellm
 from app.vector_store import VectorStore
 
@@ -335,7 +337,9 @@ def run_ingestion() -> None:
 
 def main() -> None:
     """CLI entry point for rebuilding processed data and index."""
-    logging.basicConfig(level=logging.INFO)
+    json_logging.init_non_web(enable_json=True, custom_formatter=json_logging.UnifiedJSONFormatter)
+    logging.basicConfig(stream=sys.stdout, level=LOG_LEVEL)
+    logger.setLevel(LOG_LEVEL)
     run_ingestion()
 
 
