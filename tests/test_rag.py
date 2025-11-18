@@ -30,7 +30,8 @@ def test_build_snippet_truncates() -> None:
     assert len(snippet) <= 63
 
 
-def test_rag_engine_caches_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_rag_engine_caches_answers(monkeypatch: pytest.MonkeyPatch) -> None:
     results = [
         SearchResult(
             id="chunk-1",
@@ -47,18 +48,26 @@ def test_rag_engine_caches_answers(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _FakeVectorStore(results)
     engine = RagEngine(lambda: store)
 
-    monkeypatch.setattr(rag, "embed_texts_with_litellm", lambda texts, **_: [[0.1, 0.2, 0.3]])
+    # Mock async embeddings
+    async def _fake_embed(texts, **_):
+        return [[0.1, 0.2, 0.3]]
+    
+    monkeypatch.setattr(rag, "async_embed_texts_with_litellm", _fake_embed)
+    
     call_counter = {"count": 0}
 
-    def _fake_chat(messages, **kwargs):
+    # Mock async chat completion
+    async def _fake_chat(messages, **kwargs):
         call_counter["count"] += 1
         return "Carry-on bags must fit under the seat."
 
-    monkeypatch.setattr(rag, "chat_completion", _fake_chat)
+    monkeypatch.setattr(rag, "async_chat_completion", _fake_chat)
 
     request = RagRequest(question="Carry-on?", top_k=1, airline=None)
-    first = engine.answer(request)
-    second = engine.answer(request)
+    
+    # Await the async answer method
+    first = await engine.answer(request)
+    second = await engine.answer(request)
 
     assert first.answer.startswith("Carry-on bags")
     assert second.from_cache

@@ -39,12 +39,23 @@ class LiteLLMClient:
     def completion(self, **kwargs: Any) -> Any:
         return litellm.completion(**self._with_api_base(kwargs))
 
+    async def acompletion(self, **kwargs: Any) -> Any:
+        return await litellm.acompletion(**self._with_api_base(kwargs))
+
     def embedding(self, **kwargs: Any) -> Any:
         return litellm.embedding(**self._with_api_base(kwargs))
 
+    async def aembedding(self, **kwargs: Any) -> Any:
+        return await litellm.aembedding(**self._with_api_base(kwargs))
+
     def _with_api_base(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         if self._api_base and "api_base" not in kwargs:
-            return {**kwargs, "api_base": self._api_base}
+            # When using a custom API base (likely a proxy), default to OpenAI protocol
+            # unless a provider is already explicitly set (e.g. via overrides).
+            updates = {"api_base": self._api_base}
+            if "custom_llm_provider" not in kwargs:
+                updates["custom_llm_provider"] = "openai"
+            return {**kwargs, **updates}
         return kwargs
 
 
@@ -60,6 +71,72 @@ def _get_embeddings_model_name(explicit_model: Optional[str]) -> str:
             "Set the EMBEDDINGS_MODEL environment variable."
         )
     return model_name
+
+
+async def async_chat_completion(
+    messages: Sequence[ChatMessage],
+    *,
+    model: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: Optional[int] = None,
+    timeout: Optional[float] = None,
+    **kwargs: object,
+) -> str:
+    """Call LiteLLM for a non-streaming chat completion asynchronously."""
+    candidate_models = _candidate_models(model)
+    request_timeout = timeout or LLM_TIMEOUT_SECONDS
+    try:
+        response, _ = await _run_async_completion_with_fallbacks(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=False,
+            timeout=request_timeout,
+            extra_kwargs=dict(kwargs),
+            candidate_models=candidate_models,
+        )
+    except Exception:
+        logger.exception(
+            "LiteLLM async chat completion failed after trying models: %s", candidate_models
+        )
+        raise
+
+    return _extract_message_content(response)
+
+
+async def async_stream_chat_completion(
+    messages: Sequence[ChatMessage],
+    *,
+    model: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: Optional[int] = None,
+    timeout: Optional[float] = None,
+    **kwargs: object,
+) -> Any:
+    """Call LiteLLM for a streaming chat completion asynchronously."""
+    candidate_models = _candidate_models(model)
+    request_timeout = timeout or LLM_TIMEOUT_SECONDS
+    try:
+        response_stream, _ = await _run_async_completion_with_fallbacks(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            timeout=request_timeout,
+            extra_kwargs=dict(kwargs),
+            candidate_models=candidate_models,
+        )
+    except Exception:
+        logger.exception(
+            "LiteLLM async streaming chat completion failed after trying models: %s",
+            candidate_models,
+        )
+        raise
+
+    async for chunk in response_stream:
+        content_piece = _extract_delta_content(chunk)
+        if content_piece:
+            yield content_piece
 
 
 def chat_completion(
@@ -128,6 +205,38 @@ def stream_chat_completion(
             yield content_piece
 
 
+async def async_embed_texts_with_litellm(
+    texts: Sequence[str],
+    *,
+    model: Optional[str] = None,
+    timeout: Optional[float] = None,
+) -> List[List[float]]:
+    """Create embeddings for a batch of texts asynchronously using LiteLLM."""
+    model_name = _get_embeddings_model_name(model)
+    if not texts:
+        return []
+
+    try:
+        request_timeout = timeout or EMBEDDINGS_TIMEOUT_SECONDS
+        payload: dict[str, Any] = {
+            "model": model_name,
+            "input": list(texts),
+            "timeout": request_timeout,
+        }
+        _maybe_apply_provider_override(model_name, payload)
+        response = await _client.aembedding(**payload)
+    except Exception:
+        logger.exception("LiteLLM async embeddings request failed for model %s", model_name)
+        raise
+
+    data = _get_attribute(response, "data", default=[])
+    return [
+        [float(value) for value in embedding]
+        for item in data
+        if (embedding := _get_attribute(item, "embedding")) is not None
+    ]
+
+
 def embed_texts_with_litellm(
     texts: Sequence[str],
     *,
@@ -158,6 +267,64 @@ def embed_texts_with_litellm(
         for item in data
         if (embedding := _get_attribute(item, "embedding")) is not None
     ]
+
+
+async def _run_async_completion(
+    messages: Sequence[ChatMessage],
+    *,
+    model_name: str,
+    temperature: float,
+    max_tokens: Optional[int],
+    stream: bool,
+    timeout: float,
+    extra_kwargs: dict[str, object],
+) -> Any:
+    if "stream" in extra_kwargs:
+        raise TypeError("stream argument is managed internally by app.llm")
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": list(messages),
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream,
+        "timeout": timeout,
+    }
+    payload.update(extra_kwargs)
+    _maybe_apply_provider_override(model_name, payload)
+    return await _client.acompletion(**payload)
+
+
+async def _run_async_completion_with_fallbacks(
+    messages: Sequence[ChatMessage],
+    *,
+    temperature: float,
+    max_tokens: Optional[int],
+    stream: bool,
+    timeout: float,
+    extra_kwargs: dict[str, object],
+    candidate_models: Sequence[str],
+) -> tuple[Any, str]:
+    last_auth_error: LiteLLMAuthenticationError | None = None
+    for candidate in candidate_models:
+        try:
+            response = await _run_async_completion(
+                messages,
+                model_name=candidate,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=stream,
+                timeout=timeout,
+                extra_kwargs=extra_kwargs,
+            )
+            return response, candidate
+        except LiteLLMAuthenticationError as exc:
+            last_auth_error = exc
+            logger.warning(
+                "LiteLLM async denied access to model %s, trying next fallback", candidate
+            )
+    if last_auth_error is not None:
+        raise last_auth_error
+    raise RuntimeError("No LLM models available for async completion")
 
 
 def _run_completion(

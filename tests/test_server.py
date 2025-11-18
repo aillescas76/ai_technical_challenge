@@ -17,11 +17,11 @@ class _FakeEngine:
         self.requests: List[RagRequest] = []
         self.answer_payload = _make_answer("Carry-on bags must fit in the overhead bin.")
 
-    def answer(self, request: RagRequest) -> RagAnswer:
+    async def answer(self, request: RagRequest) -> RagAnswer:
         self.requests.append(request)
         return self.answer_payload
 
-    def stream(self, request: RagRequest) -> Iterator:
+    async def stream(self, request: RagRequest) -> Iterator:
         self.requests.append(request)
         for event in self._stream_events:
             yield event
@@ -102,10 +102,10 @@ def test_ask_route_streams_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_health_route_reports_error_status() -> None:
-    server._vector_store = None
-    server._vector_store_error = "Vector index missing"
-
     with TestClient(server.app) as client:
+        server._vector_store = None
+        server._vector_store_error = "Vector index missing"
+
         response = client.get("/healthz")
 
     payload = response.json()

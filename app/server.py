@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 from threading import Lock
+from contextlib import asynccontextmanager
 from typing import Iterable, Iterator, Optional, cast, List
 
 from fastapi import FastAPI, HTTPException, status
@@ -19,24 +20,25 @@ from app.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI(
-    title="Airline Policy RAG API",
-    description="Retrieval-augmented FastAPI service for airline policy Q&A.",
-    version="0.1.0",
-)
-
-
 _vector_store: Optional[VectorStore] = None
 _vector_store_error: Optional[str] = None
 _vector_store_lock = Lock()
 _index_html_cache: Optional[str] = None
-_rag_engine = RagEngine(lambda: _get_vector_store_or_error())
 
 
-@app.on_event("startup")
-def _startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Attempt to load the FAISS vector store when the API boots."""
     _ensure_vector_store_loaded()
+    yield
+
+
+app = FastAPI(
+    title="Airline Policy RAG API",
+    description="Retrieval-augmented FastAPI service for airline policy Q&A.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 
 def _ensure_vector_store_loaded() -> Optional[VectorStore]:
@@ -76,6 +78,9 @@ def _get_vector_store_or_error() -> VectorStore:
     return store
 
 
+_rag_engine = RagEngine(store_getter=_get_vector_store_or_error)
+
+
 @app.post("/ask", response_model=AskResponse)
 async def ask_route(request: AskRequest) -> AskResponse | StreamingResponse:
     """Retrieve relevant context, run the LLM, and return an answer with citations."""
@@ -91,14 +96,14 @@ async def ask_route(request: AskRequest) -> AskResponse | StreamingResponse:
             media_type="text/event-stream",
         )
 
-    answer = _run_rag_with_handling(rag_request)
+    answer = await _run_rag_with_handling(rag_request)
     _log_answer("json", answer, request.airline)
     return AskResponse(answer=answer.answer, citations=answer.citations)
 
 
-def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
+async def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
     try:
-        return _rag_engine.answer(rag_request)
+        return await _rag_engine.answer(rag_request)
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - network errors
@@ -108,9 +113,9 @@ def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
         ) from exc
 
 
-def _iter_streaming_response(rag_request: RagRequest) -> Iterator[str]:
+async def _iter_streaming_response(rag_request: RagRequest) -> Iterator[str]:
     try:
-        for event_type, payload in _rag_engine.stream(rag_request):
+        async for event_type, payload in _rag_engine.stream(rag_request):
             if event_type == "token":
                 yield _format_sse({"type": "token", "text": payload})
                 continue
@@ -163,9 +168,9 @@ async def ask_stream_route(request: AskRequest) -> StreamingResponse:
     )
 
 
-def _iter_ndjson_stream(rag_request: RagRequest) -> Iterable[bytes]:
+async def _iter_ndjson_stream(rag_request: RagRequest) -> Iterable[bytes]:
     try:
-        for event_type, payload in _rag_engine.stream(rag_request):
+        async for event_type, payload in _rag_engine.stream(rag_request):
             if event_type == "token":
                 yield _json_line({"event": "chunk", "delta": payload})
                 continue

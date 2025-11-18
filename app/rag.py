@@ -10,6 +10,7 @@ from time import perf_counter
 from typing import Callable, Iterable, Iterator, List, Literal, Optional, Sequence, Tuple
 
 import tiktoken
+from starlette.concurrency import run_in_threadpool
 
 from app.airlines import normalize_airline_key
 from app.config import (
@@ -22,7 +23,14 @@ from app.config import (
     MODEL_COST_LOOKUP,
     TOKEN_ENCODING_NAME,
 )
-from app.llm import chat_completion, embed_texts_with_litellm, stream_chat_completion
+from app.llm import (
+    async_chat_completion,
+    async_embed_texts_with_litellm,
+    async_stream_chat_completion,
+    chat_completion,
+    embed_texts_with_litellm,
+    stream_chat_completion,
+)
 from app.prompt import ContextChunk, build_grounded_answer_messages
 from app.schemas import Citation
 from app.vector_store import SearchResult, VectorStore
@@ -137,7 +145,7 @@ class RagEngine:
         )
         self._encoding = tiktoken.get_encoding(TOKEN_ENCODING_NAME)
 
-    def answer(self, request: RagRequest) -> RagAnswer:
+    async def answer(self, request: RagRequest) -> RagAnswer:
         """Return a grounded answer (non-streaming)."""
         normalized_request = self._normalize_request(request)
         cache_key = self._cache_key(normalized_request)
@@ -146,7 +154,7 @@ class RagEngine:
             cached.from_cache = True
             return cached
 
-        retrievals, contexts, citations = self._retrieve_records(normalized_request)
+        retrievals, contexts, citations = await self._retrieve_records(normalized_request)
         if not retrievals:
             empty_answer = RagAnswer(
                 answer="No answer found.",
@@ -166,8 +174,10 @@ class RagEngine:
         embedding_tokens = self._estimate_tokens(normalized_request.question)
 
         start = perf_counter()
-        completion = chat_completion(
-            messages, model=LLM_MODEL, timeout=LLM_TIMEOUT_SECONDS
+        completion = (
+            await async_chat_completion(
+                messages, model=LLM_MODEL, timeout=LLM_TIMEOUT_SECONDS
+            )
         ).strip()
         latency_ms = (perf_counter() - start) * 1000
 
@@ -194,7 +204,7 @@ class RagEngine:
         self._cache.set(cache_key, answer)
         return answer
 
-    def stream(
+    async def stream(
         self, request: RagRequest
     ) -> Iterator[
         Tuple[Literal["token", "final", "citations"], str | RagAnswer | List[Citation]]
@@ -209,7 +219,7 @@ class RagEngine:
             yield ("final", cached)
             return
 
-        retrievals, contexts, citations = self._retrieve_records(normalized_request)
+        retrievals, contexts, citations = await self._retrieve_records(normalized_request)
         if not retrievals:
             empty_answer = RagAnswer(
                 answer="No answer found.",
@@ -235,7 +245,7 @@ class RagEngine:
 
         start = perf_counter()
         chunks: List[str] = []
-        for piece in stream_chat_completion(
+        async for piece in async_stream_chat_completion(
             messages, model=LLM_MODEL, timeout=LLM_TIMEOUT_SECONDS
         ):
             if piece:
@@ -265,11 +275,11 @@ class RagEngine:
         self._cache.set(cache_key, answer)
         yield ("final", answer)
 
-    def _retrieve_records(
+    async def _retrieve_records(
         self, request: RagRequest
     ) -> Tuple[List[SearchResult], List[ContextChunk], List[Citation]]:
         store = self._store_getter()
-        embeddings = embed_texts_with_litellm(
+        embeddings = await async_embed_texts_with_litellm(
             [request.question],
             model=EMBEDDINGS_MODEL,
             timeout=EMBEDDINGS_TIMEOUT_SECONDS,
@@ -279,7 +289,12 @@ class RagEngine:
         query_embedding = embeddings[0]
 
         search_k = request.top_k if request.airline is None else request.top_k * 3
-        results = store.search_by_embedding(query_embedding, top_k=search_k)
+        
+        # Offload CPU-bound search to threadpool
+        results = await run_in_threadpool(
+            store.search_by_embedding, query_embedding, top_k=search_k
+        )
+
         if request.airline:
             normalized_airline = normalize_airline_key(request.airline)
             results = [
