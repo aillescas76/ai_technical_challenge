@@ -100,6 +100,26 @@ Here are example answers for key queries, demonstrating the application's abilit
 - The RAG system is limited to the information contained within the provided policy documents in the `policies/` directory. It cannot answer questions outside this scope.
 - While the system attempts to extract and cite external URLs found within documents, it does not actively crawl or retrieve information from these external links. Answers are strictly grounded in the ingested content.
 
+### Observability & Tracing
+
+The application is instrumented with [LangFuse](https://langfuse.com/) for full-stack observability.
+
+**Configuration:**
+Ensure the following environment variables are set (see `.env.example`):
+- `LANGFUSE_PUBLIC_KEY`
+- `LANGFUSE_SECRET_KEY`
+- `LANGFUSE_HOST` (default: `https://cloud.langfuse.com` or your local instance)
+
+**Features:**
+- **Request Tracing:** Every call to `/ask` (streaming or standard) generates a trace containing the input question, retrieved context, LLM generation, and final answer. Metadata includes token counts, costs, and latency.
+- **Evaluation Logging:** Running `python -m app.eval` logs each test case as a trace tagged with `eval-harness` and relevant category tags. Metrics like recall, precision, and refusal accuracy are attached to the trace.
+
+**Dashboards:**
+In the LangFuse UI, you can create dashboards to monitor:
+- **Latency:** Track P50 and P95 latency for `ask-request` traces.
+- **Cost:** Monitor token usage and estimated USD cost per model.
+- **Quality:** Filter traces by `eval-harness` to analyze regression in retrieval recall or answer quality over time.
+
 - The eval dataset lives at `docs/evals/questions.jsonl` (35 curated questions covering baggage, pets, children, pregnancy, and a refusal scenario). Each record includes gold citations and whether a refusal is expected.
 - Run the harness locally with:
 

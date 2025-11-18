@@ -223,11 +223,11 @@ This workflow ensures the repository is cohesive, well-documented, and ready for
 - Runbooks for using LangFuse UI to inspect traces, evals, and anomalies.
 
 **Tasks**
-- [ ] Add LangFuse client setup helper (e.g., `app/telemetry.py`) that reads env vars and exposes trace/span utilities.
-- [ ] Instrument `/ask` handler to report traces, context chunks, LLM inputs/outputs, and any errors to LangFuse (ensure sensitive data redaction).
-- [ ] Log eval harness runs to LangFuse as a dedicated dataset with pass/fail metrics and tags per workflow or dataset version.
-- [ ] Configure LangFuse dashboards/alerts for latency (P50/P95), failure rate, and eval regression thresholds; document how to review them in `README.md`.
-- [ ] Ensure LangFuse usage is optional (graceful no-op when credentials are missing) so local devs without keys can still run the stack.
+- [x] Add LangFuse client setup helper (e.g., `app/telemetry.py`) that reads env vars and exposes trace/span utilities.
+- [x] Instrument `/ask` handler to report traces, context chunks, LLM inputs/outputs, and any errors to LangFuse (ensure sensitive data redaction).
+- [x] Log eval harness runs to LangFuse as a dedicated dataset with pass/fail metrics and tags per workflow or dataset version.
+- [x] Configure LangFuse dashboards/alerts for latency (P50/P95), failure rate, and eval regression thresholds; document how to review them in `README.md`.
+- [x] Ensure LangFuse usage is optional (graceful no-op when credentials are missing) so local devs without keys can still run the stack.
 
 ### Local LangFuse Setup (for Workflows F & H)
 

@@ -193,6 +193,7 @@ class EvalRunner:
                         for cite in example.expected_citations
                     ],
                 },
+                tags=["eval-harness"] + example.tags,
             )
         except Exception:  # pragma: no cover
             logger.exception("Failed to emit LangFuse trace for %s", example.id)
