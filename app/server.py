@@ -9,9 +9,11 @@ from threading import Lock
 from contextlib import asynccontextmanager
 from typing import Iterable, Iterator, Optional, cast, List, Any
 
-import json_logging
+import logging.handlers
+
+import pythonjsonlogger.jsonlogger
 from cachetools import TTLCache
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import Depends, FastAPI, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
 from app.config import (LOG_LEVEL, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_TTL_SECONDS, VECTOR_STORE_PATH)
@@ -55,10 +57,17 @@ async def lifespan(app: FastAPI):
             logger.warning("UI template missing at %s", index_path)
             _index_html_cache = "<html><body><h1>UI template missing.</h1></body></html>"
 
-    json_logging.init_fastapi(enable_json=True, custom_formatter=json_logging.UnifiedJSONFormatter)
-    json_logging.init_request_instrument(app)
-    logging.basicConfig(stream=sys.stdout, level=LOG_LEVEL)
+    # Configure JSON logging
+    formatter = pythonjsonlogger.jsonlogger.JsonFormatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
+    logHandler = logging.StreamHandler(sys.stdout)
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
     logger.setLevel(LOG_LEVEL)
+    # To prevent duplicate logs when Uvicorn also configures logging
+    logger.propagate = False
+    
     yield
 
 

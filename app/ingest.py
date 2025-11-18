@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
-import json_logging
+import logging.handlers
+
+import pythonjsonlogger.jsonlogger
 import tiktoken
 from pypdf import PdfReader
 
@@ -337,9 +339,14 @@ def run_ingestion() -> None:
 
 def main() -> None:
     """CLI entry point for rebuilding processed data and index."""
-    json_logging.init_non_web(enable_json=True, custom_formatter=json_logging.UnifiedJSONFormatter)
-    logging.basicConfig(stream=sys.stdout, level=LOG_LEVEL)
+    formatter = pythonjsonlogger.jsonlogger.JsonFormatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
+    logHandler = logging.StreamHandler(sys.stdout)
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
     logger.setLevel(LOG_LEVEL)
+    logger.propagate = False
     run_ingestion()
 
 
