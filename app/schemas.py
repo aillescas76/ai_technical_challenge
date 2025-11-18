@@ -19,6 +19,10 @@ class AskRequest(BaseModel):
         default=None,
         description="Optional airline filter; restricts retrieval to a specific carrier.",
     )
+    stream: bool = Field(
+        default=False,
+        description="When true, return a server-sent event stream of answer tokens.",
+    )
 
     @field_validator("question")
     @classmethod
@@ -54,3 +58,10 @@ class HealthResponse(BaseModel):
 
     status: str
     vector_store_size: int
+
+
+class Metrics(BaseModel):
+    requests_total: int
+    requests_current: int
+    errors_total: int
+    uptime_seconds: float

@@ -160,18 +160,23 @@ This workflow focuses on usability and can evolve independently once the API con
 - Basic performance metrics (latency and cost) captured in logs or eval output.
 
 **Tasks**
-- [ ] Create an initial eval set (≥ 30 questions) spanning baggage, pets, children, pregnancy, special cases; include ambiguous airline mentions.
-- [ ] Label gold answers, citations (airline + doc title), and expected refusals.
-- [ ] Build a `pytest` eval harness to run retrieval + generation and record JSONL results.
-- [ ] Compute retrieval metrics (Recall@k, MRR), citation correctness, groundedness, refusals.
-- [ ] Track latency (P50/P95) and token/cost per request.
-- [ ] Integrate LangFuse Python SDK: log each eval run, attach metrics, citations, and latency/cost metadata.
-- [ ] Store LangFuse credentials via `.env` and document the required env vars in `app/config.py` / `.env.example`.
-- [ ] Use evals to select models/params (speed/price vs. quality), then lock defaults.
-- [ ] Enable response streaming to reduce perceived latency.
-- [ ] Add in-memory caching for repeated queries and airline-filtered lookups.
-- [ ] Tune `top_k`, chunk size/overlap, and re-ranking to hit reasonable P50/P95 latency targets.
-- [ ] Add strict timeouts and fallbacks for any optional network activity.
+- [x] Create an initial eval set (≥ 30 questions) spanning baggage, pets, children, pregnancy, special cases; include ambiguous airline mentions.
+- [x] Label gold answers, citations (airline + doc title), and expected refusals.
+- [x] Build a `pytest` eval harness to run retrieval + generation and record JSONL results.
+- [x] Compute retrieval metrics (Recall@k, MRR), citation correctness, groundedness, refusals.
+- [x] Track latency (P50/P95) and token/cost per request.
+- [x] Integrate LangFuse Python SDK: log each eval run, attach metrics, citations, and latency/cost metadata.
+- [x] Store LangFuse credentials via `.env` and document the required env vars in `app/config.py` / `.env.example`.
+- [x] Use evals to select models/params (speed/price vs. quality), then lock defaults.
+- [x] Enable response streaming to reduce perceived latency.
+- [x] Add in-memory caching for repeated queries and airline-filtered lookups.
+- [x] Tune `top_k`, chunk size/overlap, and re-ranking to hit reasonable P50/P95 latency targets.
+- [x] Add strict timeouts and fallbacks for any optional network activity.
+
+**Notes**
+- Eval dataset source of truth: `docs/evals/questions.jsonl` (35 labeled prompts). Harness command: `python -m app.eval --dataset docs/evals/questions.jsonl`.
+- Eval runs emit JSONL under `data/evals/` and report Recall@k, MRR, citation precision/recall, refusal accuracy, latency P50/P95, token totals, and estimated USD costs. LangFuse logging is optional but ready once `LANGFUSE_*` vars are set.
+- `/ask` now supports SSE streaming via `stream: true`, includes caching (configurable via `ASK_CACHE_*` env vars), and enforces LiteLLM timeouts for embeddings + completions.
 
 This workflow makes the RAG system “test-like complete” with measurable quality and latency.
 
@@ -189,18 +194,18 @@ This workflow makes the RAG system “test-like complete” with measurable qual
 - Final “release-ready” repo state for the technical challenge.
 
 **Tasks**
-- [ ] Add structured logging (no secrets) and meaningful error messages.
-- [ ] Surface user-friendly failures (e.g., “insufficient evidence” responses).
-- [ ] Add basic counters/metrics (requests, errors) for local debugging.
-- [ ] Load secrets via environment; never commit API keys.
-- [ ] Sanitize/validate user inputs; consider basic rate limiting.
-- [ ] Update `README.md` with setup/run instructions and architecture overview.
-- [ ] Document design choices and tradeoffs (RAG, models, vector store).
-- [ ] Provide example Q&A for the four sample queries with citations.
-- [ ] Note limitations and how external links are handled.
-- [ ] Manual sanity test on key queries; verify citations and links.
-- [ ] Ensure `data/` and secrets are ignored; repo is clean.
-- [ ] Tag initial version and prepare review notes (or equivalent summary for reviewers).
+- [x] Add structured logging (no secrets) and meaningful error messages.
+- [x] Surface user-friendly failures (e.g., “insufficient evidence” responses).
+- [x] Add basic counters/metrics (requests, errors) for local debugging.
+- [x] Load secrets via environment; never commit API keys.
+- [x] Sanitize/validate user inputs; consider basic rate limiting.
+- [x] Update `README.md` with setup/run instructions and architecture overview.
+- [x] Document design choices and tradeoffs (RAG, models, vector store).
+- [x] Provide example Q&A for the four sample queries with citations.
+- [x] Note limitations and how external links are handled.
+- [x] Manual sanity test on key queries; verify citations and links.
+- [x] Ensure `data/` and secrets are ignored; repo is clean.
+- [x] Tag initial version and prepare review notes (or equivalent summary for reviewers).
 
 This workflow ensures the repository is cohesive, well-documented, and ready for review as a complete RAG system.
 
@@ -218,11 +223,11 @@ This workflow ensures the repository is cohesive, well-documented, and ready for
 - Runbooks for using LangFuse UI to inspect traces, evals, and anomalies.
 
 **Tasks**
-- [ ] Add LangFuse client setup helper (e.g., `app/telemetry.py`) that reads env vars and exposes trace/span utilities.
-- [ ] Instrument `/ask` handler to report traces, context chunks, LLM inputs/outputs, and any errors to LangFuse (ensure sensitive data redaction).
-- [ ] Log eval harness runs to LangFuse as a dedicated dataset with pass/fail metrics and tags per workflow or dataset version.
-- [ ] Configure LangFuse dashboards/alerts for latency (P50/P95), failure rate, and eval regression thresholds; document how to review them in `README.md`.
-- [ ] Ensure LangFuse usage is optional (graceful no-op when credentials are missing) so local devs without keys can still run the stack.
+- [x] Add LangFuse client setup helper (e.g., `app/telemetry.py`) that reads env vars and exposes trace/span utilities.
+- [x] Instrument `/ask` handler to report traces, context chunks, LLM inputs/outputs, and any errors to LangFuse (ensure sensitive data redaction).
+- [x] Log eval harness runs to LangFuse as a dedicated dataset with pass/fail metrics and tags per workflow or dataset version.
+- [x] Configure LangFuse dashboards/alerts for latency (P50/P95), failure rate, and eval regression thresholds; document how to review them in `README.md`.
+- [x] Ensure LangFuse usage is optional (graceful no-op when credentials are missing) so local devs without keys can still run the stack.
 
 ### Local LangFuse Setup (for Workflows F & H)
 
