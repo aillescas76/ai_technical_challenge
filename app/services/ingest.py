@@ -2,23 +2,27 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
-import logging.handlers
-
 import pythonjsonlogger.jsonlogger
 import tiktoken
 from pypdf import PdfReader
 
-from app.core.airlines import canonical_airline_name
-from app.core.config import EMBEDDINGS_MODEL, LOG_LEVEL, POLICIES_DIR, PROCESSED_DOCS_PATH, VECTOR_STORE_PATH
 from app.components.llm import embed_texts_with_litellm
 from app.components.vector_store import VectorStore
-
+from app.core.airlines import canonical_airline_name
+from app.core.config import (
+    EMBEDDINGS_MODEL,
+    LOG_LEVEL,
+    POLICIES_DIR,
+    PROCESSED_DOCS_PATH,
+    VECTOR_STORE_PATH,
+)
 
 logger = logging.getLogger(__name__)
 

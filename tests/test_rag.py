@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterator, List
+from typing import List
 
 import pytest
 
+from app.components.vector_store import SearchResult
 from app.services import rag
 from app.services.rag import RagEngine, RagRequest
-from app.components.vector_store import SearchResult
 
 
 class _FakeVectorStore:
@@ -51,9 +51,9 @@ async def test_rag_engine_caches_answers(monkeypatch: pytest.MonkeyPatch) -> Non
     # Mock async embeddings
     async def _fake_embed(texts, **_):
         return [[0.1, 0.2, 0.3]]
-    
+
     monkeypatch.setattr(rag, "async_embed_texts_with_litellm", _fake_embed)
-    
+
     call_counter = {"count": 0}
 
     # Mock async chat completion
@@ -64,7 +64,7 @@ async def test_rag_engine_caches_answers(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(rag, "async_chat_completion", _fake_chat)
 
     request = RagRequest(question="Carry-on?", top_k=1, airline=None)
-    
+
     # Await the async answer method
     first = await engine.answer(request)
     second = await engine.answer(request)

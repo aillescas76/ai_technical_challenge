@@ -6,9 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api import server
+from app.api.schemas import Citation
 from app.services.prompt import ContextChunk
 from app.services.rag import CostBreakdown, RagAnswer, RagRequest, TokenUsage
-from app.api.schemas import Citation
 
 
 class _FakeEngine:

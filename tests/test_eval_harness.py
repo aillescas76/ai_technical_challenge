@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterator, List
 
 import pytest
 
+from app.api.schemas import Citation
 from app.evaluation import eval as eval_module
-from app.evaluation.eval import ExpectedCitation, EvalExample, MetricAccumulator, _citation_scores, _retrieval_scores
+from app.evaluation.eval import (
+    EvalExample,
+    ExpectedCitation,
+    MetricAccumulator,
+    _citation_scores,
+    _retrieval_scores,
+)
 from app.services.prompt import ContextChunk
 from app.services.rag import CostBreakdown, RagAnswer, TokenUsage
-from app.api.schemas import Citation
 
 
 def _sample_answer(text: str) -> RagAnswer:
