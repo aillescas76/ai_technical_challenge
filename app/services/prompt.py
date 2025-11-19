@@ -44,7 +44,7 @@ def build_grounded_answer_messages(
             "Instructions:\n"
             "- Base the answer ONLY on the excerpts above.\n"
             "- Cite each statement with [Airline – Document Title].\n"
-            "- If nothing answers the question, respond with \"No answer found based on available policies.\"",
+            '- If nothing answers the question, respond with "No answer found based on available policies."',
         )
     )
     return [

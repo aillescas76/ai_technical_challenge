@@ -46,7 +46,8 @@ class EvalExample:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EvalExample":
         citations = [
-            ExpectedCitation.from_dict(item) for item in data.get("expected_citations", [])
+            ExpectedCitation.from_dict(item)
+            for item in data.get("expected_citations", [])
         ]
         return cls(
             id=str(data["id"]),
@@ -175,7 +176,9 @@ class EvalRunner:
         logger.info("Eval run complete: %s", json.dumps(summary))
         return summary
 
-    def _emit_trace(self, example: EvalExample, answer, metrics: Dict[str, Any]) -> None:
+    def _emit_trace(
+        self, example: EvalExample, answer, metrics: Dict[str, Any]
+    ) -> None:
         if not self._reporter.is_enabled():
             return
         try:
@@ -184,7 +187,9 @@ class EvalRunner:
                 input={"question": example.question, "id": example.id},
                 output={
                     "answer": answer.answer,
-                    "citations": [citation.model_dump() for citation in answer.citations],
+                    "citations": [
+                        citation.model_dump() for citation in answer.citations
+                    ],
                 },
                 metadata={
                     "expected_citations": [

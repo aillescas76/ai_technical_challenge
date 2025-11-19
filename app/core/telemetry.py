@@ -59,7 +59,9 @@ class Telemetry:
         """Create a root span/observation that also acts as the trace if enabled, otherwise return a dummy object."""
         if self._client:
             try:
-                return self._client.start_as_current_observation(as_type=as_type, **kwargs)
+                return self._client.start_as_current_observation(
+                    as_type=as_type, **kwargs
+                )
             except Exception:
                 logger.exception("Error creating trace")
         return _DummyObservation()
@@ -74,6 +76,7 @@ class Telemetry:
 
 class _DummyObservation:
     """No-op observation object for when telemetry is disabled."""
+
     def update(self, **kwargs: Any) -> None:
         pass
 

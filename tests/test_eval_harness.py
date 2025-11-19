@@ -44,7 +44,9 @@ def _sample_answer(text: str) -> RagAnswer:
         retrievals=[],
         latency_ms=25.0,
         tokens=TokenUsage(prompt=12, completion=6, embedding=4),
-        costs=CostBreakdown(prompt_usd=0.0001, completion_usd=0.0002, embedding_usd=0.00003),
+        costs=CostBreakdown(
+            prompt_usd=0.0001, completion_usd=0.0002, embedding_usd=0.00003
+        ),
     )
 
 
@@ -56,7 +58,9 @@ def test_load_eval_dataset(tmp_path: Path) -> None:
                 "id": "EX-1",
                 "question": "Who charges $40?",
                 "expected_answer": "AA charges $40.",
-                "expected_citations": [{"airline": "American Airlines", "title": "Checked bag policy"}],
+                "expected_citations": [
+                    {"airline": "American Airlines", "title": "Checked bag policy"}
+                ],
                 "airlines": ["American Airlines"],
                 "category": "baggage",
                 "tags": ["fees"],
@@ -125,7 +129,9 @@ def test_retrieval_and_citation_scores() -> None:
     assert citation_recall == pytest.approx(0.5)
 
 
-def test_eval_runner_creates_results_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_eval_runner_creates_results_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     example = EvalExample(
         id="AA-BAG-1",
         question="Who charges $40?",
@@ -152,7 +158,9 @@ def test_eval_runner_creates_results_file(tmp_path: Path, monkeypatch: pytest.Mo
             return _sample_answer("AA charges $40.")
 
     monkeypatch.setattr(eval_module, "LangfuseReporter", lambda: _FakeReporter())
-    monkeypatch.setattr(eval_module, "RagEngine", lambda provider: _FakeEngine(provider))
+    monkeypatch.setattr(
+        eval_module, "RagEngine", lambda provider: _FakeEngine(provider)
+    )
     monkeypatch.setattr(eval_module.VectorStore, "load", lambda path: object())
 
     output = tmp_path / "results.jsonl"

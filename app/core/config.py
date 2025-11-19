@@ -97,7 +97,7 @@ _DEFAULT_MODEL_COSTS: Dict[str, Dict[str, float]] = {
     "gpt-4.1-mini": {"prompt": 0.0000004, "completion": 0.0000016},
     "gpt-4.1": {"prompt": 0.000002, "completion": 0.000008},
     "text-embedding-3-small": {"prompt": 0.00000002},
-    "claude-3-5-haiku": {"prompt": 0.0000008, "completion": 0.000004}
+    "claude-3-5-haiku": {"prompt": 0.0000008, "completion": 0.000004},
 }
 
 

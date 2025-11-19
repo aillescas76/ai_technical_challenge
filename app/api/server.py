@@ -62,7 +62,9 @@ def _load_index_html() -> str:
             _index_html_cache = index_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             logger.warning("UI template missing at %s", index_path)
-            _index_html_cache = "<html><body><h1>UI template missing.</h1></body></html>"
+            _index_html_cache = (
+                "<html><body><h1>UI template missing.</h1></body></html>"
+            )
     return _index_html_cache
 
 
@@ -124,8 +126,12 @@ async def rate_limit_dependency(request: Request) -> None:
     with _metrics_lock:
         count = _rate_limit_cache.get(client_ip, 0)
         if count >= RATE_LIMIT_MAX_REQUESTS:
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded.")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded.",
+            )
         _rate_limit_cache[client_ip] = count + 1
+
 
 def _ensure_vector_store_loaded() -> Optional[VectorStore]:
     """Load the vector store from disk if it is not already cached."""
@@ -160,7 +166,9 @@ def _get_vector_store_or_error() -> VectorStore:
     store = _ensure_vector_store_loaded()
     if store is None:
         detail = _vector_store_error or "Vector index is not available."
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail
+        )
     return store
 
 
@@ -172,7 +180,10 @@ def _update_trace_with_answer(trace: Any, answer: RagAnswer) -> None:
     if not trace:
         return
     trace.update(
-        output={"answer": answer.answer, "citations": [c.model_dump() for c in answer.citations]},
+        output={
+            "answer": answer.answer,
+            "citations": [c.model_dump() for c in answer.citations],
+        },
         metadata=_serialize_metrics(answer),
         usage_details={
             "prompt_tokens": answer.tokens.prompt,
@@ -188,7 +199,9 @@ def _update_trace_with_answer(trace: Any, answer: RagAnswer) -> None:
 
 
 @app.post("/ask", response_model=AskResponse)
-async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_dependency)) -> AskResponse | StreamingResponse:
+async def ask_route(
+    request: AskRequest, rate_limit: None = Depends(rate_limit_dependency)
+) -> AskResponse | StreamingResponse:
     """Retrieve relevant context, run the LLM, and return an answer with citations."""
     _increment_counter("requests_total")
     _increment_counter("requests_current")
@@ -197,8 +210,12 @@ async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_d
     telemetry = Telemetry.get_instance()
     with telemetry.start_trace_span(
         name="ask-request",
-        input={"question": request.question, "airline": request.airline, "top_k": request.top_k},
-        metadata={"stream": request.stream}
+        input={
+            "question": request.question,
+            "airline": request.airline,
+            "top_k": request.top_k,
+        },
+        metadata={"stream": request.stream},
     ) as trace:
         rag_request = RagRequest(
             question=request.question,
@@ -231,7 +248,8 @@ async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_d
             trace.update_trace(metadata={"error": str(e)})
             telemetry.flush()
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error."
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error.",
             ) from e
         finally:
             _decrement_counter("requests_current")
@@ -244,7 +262,8 @@ async def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
         # This handles cases where the RAG system determines it lacks sufficient evidence.
         if any(term in answer.answer.lower() for term in NO_ANSWER_PHRASES):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="No answer found based on the provided policies."
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No answer found based on the provided policies.",
             )
         return answer
     except HTTPException:
@@ -258,7 +277,9 @@ async def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
         ) from exc
 
 
-async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -> Iterator[str]:
+async def _iter_streaming_response(
+    rag_request: RagRequest, trace: Any = None
+) -> Iterator[str]:
     try:
         async for event_type, payload in _rag_engine.stream(rag_request):
             if event_type == "token":
@@ -269,9 +290,7 @@ async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -
                 yield _format_sse(
                     {
                         "type": "citations",
-                        "citations": [
-                            citation.model_dump() for citation in citations
-                        ],
+                        "citations": [citation.model_dump() for citation in citations],
                     }
                 )
                 continue
@@ -310,8 +329,11 @@ async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -
     finally:
         _decrement_counter("requests_current")
 
+
 @app.post("/ask/stream")
-async def ask_stream_route(request: AskRequest, rate_limit: None = Depends(rate_limit_dependency)) -> StreamingResponse:
+async def ask_stream_route(
+    request: AskRequest, rate_limit: None = Depends(rate_limit_dependency)
+) -> StreamingResponse:
     """Stream NDJSON events for the UI template."""
     _increment_counter("requests_total")
     _increment_counter("requests_current")
@@ -319,8 +341,12 @@ async def ask_stream_route(request: AskRequest, rate_limit: None = Depends(rate_
     telemetry = Telemetry.get_instance()
     with telemetry.start_trace_span(
         name="ask-stream",
-        input={"question": request.question, "airline": request.airline, "top_k": request.top_k},
-        metadata={"stream": True, "format": "ndjson"}
+        input={
+            "question": request.question,
+            "airline": request.airline,
+            "top_k": request.top_k,
+        },
+        metadata={"stream": True, "format": "ndjson"},
     ) as trace:
 
         rag_request = RagRequest(
@@ -335,7 +361,9 @@ async def ask_stream_route(request: AskRequest, rate_limit: None = Depends(rate_
         )
 
 
-async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Iterable[bytes]:
+async def _iter_ndjson_stream(
+    rag_request: RagRequest, trace: Any = None
+) -> Iterable[bytes]:
     try:
         async for event_type, payload in _rag_engine.stream(rag_request):
             if event_type == "token":
@@ -346,9 +374,7 @@ async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Ite
                 yield _json_line(
                     {
                         "event": "citations",
-                        "citations": [
-                            citation.model_dump() for citation in citations
-                        ],
+                        "citations": [citation.model_dump() for citation in citations],
                     }
                 )
                 continue
@@ -382,6 +408,7 @@ async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Ite
         yield _json_line({"event": "error", "message": "LLM streaming failed."})
     finally:
         _decrement_counter("requests_current")
+
 
 @app.get("/healthz", response_model=HealthResponse)
 async def health_route() -> HealthResponse:
@@ -439,7 +466,9 @@ def _serialize_metrics(answer: RagAnswer) -> dict[str, object]:
 
 
 def _log_answer(channel: str, answer: RagAnswer, airline: Optional[str]) -> None:
-    citation_summary = ", ".join(iter_chunk_citations(answer.contexts)) or "no citations"
+    citation_summary = (
+        ", ".join(iter_chunk_citations(answer.contexts)) or "no citations"
+    )
     logger.info(
         "[%s] Answered in %.1f ms with %d chunks (%s) cache=%s airline_filter=%s",
         channel,
@@ -449,6 +478,3 @@ def _log_answer(channel: str, answer: RagAnswer, airline: Optional[str]) -> None
         answer.from_cache,
         airline or "*",
     )
-
-
-

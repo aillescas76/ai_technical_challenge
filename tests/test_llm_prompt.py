@@ -107,9 +107,13 @@ def test_build_grounded_answer_messages_formats_context() -> None:
         )
     ]
 
-    messages = build_grounded_answer_messages(question="What is the limit?", contexts=contexts)
+    messages = build_grounded_answer_messages(
+        question="What is the limit?", contexts=contexts
+    )
 
-    assert messages[0] == ChatMessage(role="system", content=DEFAULT_SYSTEM_PROMPT.strip())
+    assert messages[0] == ChatMessage(
+        role="system", content=DEFAULT_SYSTEM_PROMPT.strip()
+    )
     user_content = messages[1]["content"]
     assert "SkyFly" in user_content
     assert "baggage.md" in user_content

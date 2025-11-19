@@ -15,7 +15,9 @@ class _FakeEngine:
     def __init__(self, *, stream_events: Sequence) -> None:
         self._stream_events = list(stream_events)
         self.requests: List[RagRequest] = []
-        self.answer_payload = _make_answer("Carry-on bags must fit in the overhead bin.")
+        self.answer_payload = _make_answer(
+            "Carry-on bags must fit in the overhead bin."
+        )
 
     async def answer(self, request: RagRequest) -> RagAnswer:
         self.requests.append(request)
@@ -53,7 +55,9 @@ def _make_answer(text: str) -> RagAnswer:
         retrievals=[],
         latency_ms=12.5,
         tokens=TokenUsage(prompt=20, completion=10, embedding=5),
-        costs=CostBreakdown(prompt_usd=0.0002, completion_usd=0.0004, embedding_usd=0.00005),
+        costs=CostBreakdown(
+            prompt_usd=0.0002, completion_usd=0.0004, embedding_usd=0.00005
+        ),
     )
 
 
