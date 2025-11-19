@@ -9,15 +9,28 @@ services:
     volumes:
       - ./:/app
       - ./data:/app/data
-    command: uvicorn app.server:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.api.server:app --host 0.0.0.0 --port 8000 --reload
 
   ingest:
     build: .
+    image: airline-policy-app
     env_file:
       - .env
     volumes:
       - ./:/app
       - ./data:/app/data
-    command: python -m app.ingest
+    command: python -m app.services.ingest
     profiles:
       - ingest
+
+  eval:
+    build: .
+    image: airline-policy-app
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+    entrypoint: ["python", "-m", "app.evaluation.eval"]
+    profiles:
+      - tools

@@ -113,7 +113,7 @@ Ensure the following environment variables are set (see `.env.example`):
 
 **Features:**
 - **Request Tracing:** Every call to `/ask` (streaming or standard) generates a trace containing the input question, retrieved context, LLM generation, and final answer. Metadata includes token counts, costs, and latency.
-- **Evaluation Logging:** Running `python -m app.eval` logs each test case as a trace tagged with `eval-harness` and relevant category tags. Metrics like recall, precision, and refusal accuracy are attached to the trace.
+- **Evaluation Logging:** Running the evaluation harness logs each test case as a trace tagged with `eval-harness` and relevant category tags. Metrics like recall, precision, and refusal accuracy are attached to the trace.
 
 **Dashboards:**
 In the LangFuse UI, you can create dashboards to monitor:
@@ -125,7 +125,7 @@ In the LangFuse UI, you can create dashboards to monitor:
 - Run the harness locally with:
 
   ```bash
-  python -m app.eval --dataset docs/evals/questions.jsonl --limit 10
+  docker compose run --rm eval --dataset docs/evals/questions.jsonl --limit 10
   ```
 
   Results are written to `data/evals/run-*.jsonl` (git-ignored) and the summary metrics (Recall@k, MRR, citation precision/recall, refusal accuracy, latency P50/P95, token totals, and USD cost estimates) are printed and logged.
