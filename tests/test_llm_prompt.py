@@ -4,9 +4,9 @@ from typing import Any, Dict, Iterable, List
 
 import pytest
 
-from app import llm
-from app.llm import ChatMessage
-from app.prompt import (
+from app.components import llm
+from app.components.llm import ChatMessage
+from app.services.prompt import (
     DEFAULT_SYSTEM_PROMPT,
     ContextChunk,
     build_grounded_answer_messages,

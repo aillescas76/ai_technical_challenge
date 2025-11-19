@@ -14,10 +14,10 @@ import pythonjsonlogger.jsonlogger
 import tiktoken
 from pypdf import PdfReader
 
-from app.airlines import canonical_airline_name
-from app.config import EMBEDDINGS_MODEL, LOG_LEVEL, POLICIES_DIR, PROCESSED_DOCS_PATH, VECTOR_STORE_PATH
-from app.llm import embed_texts_with_litellm
-from app.vector_store import VectorStore
+from app.core.airlines import canonical_airline_name
+from app.core.config import EMBEDDINGS_MODEL, LOG_LEVEL, POLICIES_DIR, PROCESSED_DOCS_PATH, VECTOR_STORE_PATH
+from app.components.llm import embed_texts_with_litellm
+from app.components.vector_store import VectorStore
 
 
 logger = logging.getLogger(__name__)

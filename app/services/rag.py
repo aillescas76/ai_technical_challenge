@@ -12,8 +12,8 @@ from typing import Callable, Iterable, Iterator, List, Literal, Optional, Sequen
 import tiktoken
 from starlette.concurrency import run_in_threadpool
 
-from app.airlines import normalize_airline_key
-from app.config import (
+from app.core.airlines import normalize_airline_key
+from app.core.config import (
     ASK_CACHE_MAX_ITEMS,
     ASK_CACHE_TTL_SECONDS,
     EMBEDDINGS_MODEL,
@@ -23,7 +23,7 @@ from app.config import (
     MODEL_COST_LOOKUP,
     TOKEN_ENCODING_NAME,
 )
-from app.llm import (
+from app.components.llm import (
     async_chat_completion,
     async_embed_texts_with_litellm,
     async_stream_chat_completion,
@@ -31,9 +31,9 @@ from app.llm import (
     embed_texts_with_litellm,
     stream_chat_completion,
 )
-from app.prompt import ContextChunk, build_grounded_answer_messages
-from app.schemas import Citation
-from app.vector_store import SearchResult, VectorStore
+from app.services.prompt import ContextChunk, build_grounded_answer_messages
+from app.api.schemas import Citation
+from app.components.vector_store import SearchResult, VectorStore
 
 
 logger = logging.getLogger(__name__)

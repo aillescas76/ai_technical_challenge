@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from app.config import LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+from app.core.config import LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
 try:
     from langfuse import Langfuse

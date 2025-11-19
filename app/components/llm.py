@@ -6,7 +6,7 @@ from typing import Any, Iterable, List, Literal, Optional, Sequence, TypedDict
 import litellm
 from litellm.exceptions import AuthenticationError as LiteLLMAuthenticationError
 
-from app.config import (
+from app.core.config import (
     EMBEDDINGS_MODEL,
     EMBEDDINGS_TIMEOUT_SECONDS,
     LLM_BASE_URL,

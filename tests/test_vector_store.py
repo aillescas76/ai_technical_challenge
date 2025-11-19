@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.vector_store import VectorStore
+from app.components.vector_store import VectorStore
 
 
 def test_vector_store_add_and_search_by_embedding() -> None:

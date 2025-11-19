@@ -4,9 +4,9 @@ from typing import Iterator, List
 
 import pytest
 
-from app import rag
-from app.rag import RagEngine, RagRequest
-from app.vector_store import SearchResult
+from app.services import rag
+from app.services.rag import RagEngine, RagRequest
+from app.components.vector_store import SearchResult
 
 
 class _FakeVectorStore:

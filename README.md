@@ -36,6 +36,7 @@ No host-side `pip install` steps are required; the Docker image contains all run
 
 - Full challenge description (original README.md file): [docs/challenge.md](docs/challenge.md)
 - Analysis and proposed solution: [docs/analysis.md](docs/analysis.md)
+- System Architecture: [docs/architecture.md](docs/architecture.md)
 
 ### Structured Logging
 

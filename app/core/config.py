@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_DIR: Path = Path(__file__).resolve().parent.parent
+BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
 
 POLICIES_DIR: Path = BASE_DIR / "policies"
 DATA_DIR: Path = BASE_DIR / "data"

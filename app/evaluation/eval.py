@@ -9,11 +9,11 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from app.airlines import normalize_airline_key
-from app.config import DATA_DIR, EVAL_DATASET_PATH, VECTOR_STORE_PATH
-from app.rag import RagEngine, RagRequest
-from app.telemetry import LangfuseReporter
-from app.vector_store import VectorStore
+from app.core.airlines import normalize_airline_key
+from app.core.config import DATA_DIR, EVAL_DATASET_PATH, VECTOR_STORE_PATH
+from app.services.rag import RagEngine, RagRequest
+from app.core.telemetry import LangfuseReporter
+from app.components.vector_store import VectorStore
 
 
 logger = logging.getLogger(__name__)

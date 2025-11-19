@@ -6,11 +6,11 @@ from typing import Iterator, List
 
 import pytest
 
-from app import eval as eval_module
-from app.eval import ExpectedCitation, EvalExample, MetricAccumulator, _citation_scores, _retrieval_scores
-from app.prompt import ContextChunk
-from app.rag import CostBreakdown, RagAnswer, TokenUsage
-from app.schemas import Citation
+from app.evaluation import eval as eval_module
+from app.evaluation.eval import ExpectedCitation, EvalExample, MetricAccumulator, _citation_scores, _retrieval_scores
+from app.services.prompt import ContextChunk
+from app.services.rag import CostBreakdown, RagAnswer, TokenUsage
+from app.api.schemas import Citation
 
 
 def _sample_answer(text: str) -> RagAnswer:
