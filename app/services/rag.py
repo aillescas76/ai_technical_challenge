@@ -158,7 +158,9 @@ class RagEngine:
             cached.from_cache = True
             return cached
 
-        retrievals, contexts, citations = await self._retrieve_records(normalized_request)
+        retrievals, contexts, citations = await self._retrieve_records(
+            normalized_request
+        )
         if not retrievals:
             empty_answer = RagAnswer(
                 answer="No answer found.",
@@ -167,7 +169,9 @@ class RagEngine:
                 retrievals=[],
                 latency_ms=0.0,
                 tokens=TokenUsage(prompt=0, completion=0, embedding=0),
-                costs=CostBreakdown(prompt_usd=0.0, completion_usd=0.0, embedding_usd=0.0),
+                costs=CostBreakdown(
+                    prompt_usd=0.0, completion_usd=0.0, embedding_usd=0.0
+                ),
             )
             self._cache.set(cache_key, empty_answer)
             return empty_answer
@@ -223,7 +227,9 @@ class RagEngine:
             yield ("final", cached)
             return
 
-        retrievals, contexts, citations = await self._retrieve_records(normalized_request)
+        retrievals, contexts, citations = await self._retrieve_records(
+            normalized_request
+        )
         if not retrievals:
             empty_answer = RagAnswer(
                 answer="No answer found.",
@@ -232,7 +238,9 @@ class RagEngine:
                 retrievals=[],
                 latency_ms=0.0,
                 tokens=TokenUsage(prompt=0, completion=0, embedding=0),
-                costs=CostBreakdown(prompt_usd=0.0, completion_usd=0.0, embedding_usd=0.0),
+                costs=CostBreakdown(
+                    prompt_usd=0.0, completion_usd=0.0, embedding_usd=0.0
+                ),
             )
             self._cache.set(cache_key, empty_answer)
             yield ("citations", empty_answer.citations)

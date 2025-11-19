@@ -85,4 +85,3 @@ def test_chunking_respects_token_limits_and_overlap() -> None:
         assert chunk.source_path == metadata.source_path
         assert chunk.source_url == metadata.source_url
         assert chunk.chunk_index == idx
-

@@ -106,7 +106,9 @@ class VectorStore:
         faiss.write_index(self.index, str(index_path))
 
         with meta_path.open("w", encoding="utf-8") as f:
-            for doc_id, text, metadata in zip(self._ids, self._texts, self._metadatas, strict=False):
+            for doc_id, text, metadata in zip(
+                self._ids, self._texts, self._metadatas, strict=False
+            ):
                 record = {
                     "id": doc_id,
                     "text": text,

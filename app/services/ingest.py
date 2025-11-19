@@ -238,7 +238,9 @@ def chunk_document(
         token_slice = tokens[start:end]
         text_chunk = encoding.decode(token_slice)
 
-        chunk_id = f"{document.metadata.airline}:{document.metadata.title}:{chunk_index}"
+        chunk_id = (
+            f"{document.metadata.airline}:{document.metadata.title}:{chunk_index}"
+        )
 
         chunk = DocumentChunk(
             id=chunk_id,
@@ -292,7 +294,9 @@ def write_processed_chunks(chunks: Sequence[DocumentChunk], path: Path) -> None:
             f.write("\n")
 
 
-def embed_texts(texts: Sequence[str], model: str = EMBEDDINGS_MODEL) -> List[List[float]]:
+def embed_texts(
+    texts: Sequence[str], model: str = EMBEDDINGS_MODEL
+) -> List[List[float]]:
     """Create embeddings for texts using the LiteLLM embeddings API."""
     return embed_texts_with_litellm(texts, model=model)
 
@@ -318,7 +322,9 @@ def build_vector_index(
     dim = len(embeddings[0])
 
     store = VectorStore(dimension=dim)
-    store.add_embeddings(embeddings=embeddings, metadatas=metadatas, ids=ids, texts=texts)
+    store.add_embeddings(
+        embeddings=embeddings, metadatas=metadatas, ids=ids, texts=texts
+    )
     vector_store_dir.mkdir(parents=True, exist_ok=True)
     store.save(vector_store_dir)
 

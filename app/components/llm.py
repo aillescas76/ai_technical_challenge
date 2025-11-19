@@ -20,10 +20,12 @@ try:
     from langfuse.decorators import observe
 except ImportError:
     langfuse = None
+
     # No-op decorator if langfuse is not present
     def observe(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
 
@@ -52,7 +54,7 @@ def _update_trace_usage(response: Any) -> None:
             usage_details = {
                 "input": getattr(usage, "prompt_tokens", 0),
                 "output": getattr(usage, "completion_tokens", 0),
-                "total": getattr(usage, "total_tokens", 0)
+                "total": getattr(usage, "total_tokens", 0),
             }
 
         # Update observation
@@ -60,10 +62,12 @@ def _update_trace_usage(response: Any) -> None:
         langfuse.update_current_observation(
             usage_details=usage_details,
             cost_details={"total": float(cost)} if cost is not None else None,
-            model=getattr(response, "model", None)
+            model=getattr(response, "model", None),
         )
     except Exception:
-        logger.warning("Failed to update Langfuse trace with usage metrics", exc_info=True)
+        logger.warning(
+            "Failed to update Langfuse trace with usage metrics", exc_info=True
+        )
 
 
 Role = Literal["system", "user", "assistant", "tool"]
@@ -144,7 +148,8 @@ async def async_chat_completion(
         )
     except Exception:
         logger.exception(
-            "LiteLLM async chat completion failed after trying models: %s", candidate_models
+            "LiteLLM async chat completion failed after trying models: %s",
+            candidate_models,
         )
         raise
 
@@ -279,7 +284,9 @@ async def async_embed_texts_with_litellm(
         response = await _client.aembedding(**payload)
         _update_trace_usage(response)
     except Exception:
-        logger.exception("LiteLLM async embeddings request failed for model %s", model_name)
+        logger.exception(
+            "LiteLLM async embeddings request failed for model %s", model_name
+        )
         raise
 
     data = _get_attribute(response, "data", default=[])
@@ -373,7 +380,8 @@ async def _run_async_completion_with_fallbacks(
         except LiteLLMAuthenticationError as exc:
             last_auth_error = exc
             logger.warning(
-                "LiteLLM async denied access to model %s, trying next fallback", candidate
+                "LiteLLM async denied access to model %s, trying next fallback",
+                candidate,
             )
     if last_auth_error is not None:
         raise last_auth_error

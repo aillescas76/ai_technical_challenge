@@ -21,7 +21,9 @@ def test_vector_store_add_and_search_by_embedding() -> None:
         [0.7, 0.7],  # airplane (somewhere in between)
     ]
 
-    store.add_embeddings(embeddings=embeddings, metadatas=metadatas, ids=ids, texts=texts)
+    store.add_embeddings(
+        embeddings=embeddings, metadatas=metadatas, ids=ids, texts=texts
+    )
 
     results = store.search_by_embedding([1.0, 0.0], top_k=2)
 
@@ -41,7 +43,9 @@ def test_vector_store_persist_and_reload(tmp_path: Path) -> None:
         [0.0, 1.0],
     ]
 
-    store.add_embeddings(embeddings=embeddings, metadatas=metadatas, ids=ids, texts=texts)
+    store.add_embeddings(
+        embeddings=embeddings, metadatas=metadatas, ids=ids, texts=texts
+    )
 
     store_dir = tmp_path / "faiss"
     store.save(store_dir)
@@ -55,4 +59,3 @@ def test_vector_store_persist_and_reload(tmp_path: Path) -> None:
     assert results
     assert results[0].id == "dog"
     assert results[0].metadata["label"] == "dog"
-

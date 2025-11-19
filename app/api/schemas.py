@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 class AskRequest(BaseModel):
     """Incoming request payload for the /ask endpoint."""
 
-    question: str = Field(..., description="Natural-language policy question to answer.")
+    question: str = Field(
+        ..., description="Natural-language policy question to answer."
+    )
     top_k: int = Field(
         5,
         ge=1,
