@@ -9,6 +9,8 @@ services:
     volumes:
       - ./:/app
       - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: uvicorn app.api.server:app --host 0.0.0.0 --port 8000 --reload
 
   ingest:
@@ -31,6 +33,8 @@ services:
     volumes:
       - ./:/app
       - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     entrypoint: ["python", "-m", "app.evaluation.eval"]
     profiles:
       - tools
