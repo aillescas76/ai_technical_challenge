@@ -5,10 +5,10 @@ from typing import Iterator, List, Sequence
 import pytest
 from fastapi.testclient import TestClient
 
-from app import server
-from app.prompt import ContextChunk
-from app.rag import CostBreakdown, RagAnswer, RagRequest, TokenUsage
-from app.schemas import Citation
+from app.api import server
+from app.services.prompt import ContextChunk
+from app.services.rag import CostBreakdown, RagAnswer, RagRequest, TokenUsage
+from app.api.schemas import Citation
 
 
 class _FakeEngine:

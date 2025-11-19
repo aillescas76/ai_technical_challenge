@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_DIR: Path = Path(__file__).resolve().parent.parent
+BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
 
 POLICIES_DIR: Path = BASE_DIR / "policies"
 DATA_DIR: Path = BASE_DIR / "data"
@@ -65,10 +65,10 @@ def _parse_provider_overrides(env_var: str) -> Dict[str, str]:
 
 EMBEDDINGS_MODEL: str = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small")
 LLM_BASE_URL: str | None = os.getenv("LLM_BASE_URL") or None
-LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4.1-mini")
 LLM_MODEL_FALLBACKS: tuple[str, ...] = _parse_model_list(
     "LLM_MODEL_FALLBACKS",
-    ("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"),
+    ("gpt-5-mini", "gpt-4.1"),
 )
 LLM_PROVIDER_OVERRIDES: Dict[str, str] = _parse_provider_overrides(
     "LLM_PROVIDER_OVERRIDES"
@@ -93,8 +93,11 @@ LANGFUSE_SECRET_KEY: str | None = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_HOST: str | None = os.getenv("LANGFUSE_HOST")
 
 _DEFAULT_MODEL_COSTS: Dict[str, Dict[str, float]] = {
-    "gpt-4o-mini": {"prompt": 0.00015, "completion": 0.00060},
-    "text-embedding-3-small": {"prompt": 0.00002},
+    "gpt-5-mini": {"prompt": 0.00000025, "completion": 0.000002},
+    "gpt-4.1-mini": {"prompt": 0.0000004, "completion": 0.0000016},
+    "gpt-4.1": {"prompt": 0.000002, "completion": 0.000008},
+    "text-embedding-3-small": {"prompt": 0.00000002},
+    "claude-3-5-haiku": {"prompt": 0.0000008, "completion": 0.000004}
 }
 
 

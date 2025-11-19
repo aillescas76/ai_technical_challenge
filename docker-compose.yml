@@ -9,15 +9,32 @@ services:
     volumes:
       - ./:/app
       - ./data:/app/data
-    command: uvicorn app.server:app --host 0.0.0.0 --port 8000 --reload
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn app.api.server:app --host 0.0.0.0 --port 8000 --reload
 
   ingest:
     build: .
+    image: airline-policy-app
     env_file:
       - .env
     volumes:
       - ./:/app
       - ./data:/app/data
-    command: python -m app.ingest
+    command: python -m app.services.ingest
     profiles:
       - ingest
+
+  eval:
+    build: .
+    image: airline-policy-app
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["python", "-m", "app.evaluation.eval"]
+    profiles:
+      - tools

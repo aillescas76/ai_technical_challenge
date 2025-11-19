@@ -9,17 +9,19 @@ from threading import Lock
 from contextlib import asynccontextmanager
 from typing import Iterable, Iterator, Optional, cast, List, Any
 
-import json_logging
+import logging.handlers
+
+import pythonjsonlogger.jsonlogger
 from cachetools import TTLCache
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import Depends, FastAPI, HTTPException, status, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 
-from app.config import (LOG_LEVEL, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_TTL_SECONDS, VECTOR_STORE_PATH)
-from app.prompt import iter_chunk_citations
-from app.rag import RagAnswer, RagEngine, RagRequest
-from app.schemas import AskRequest, AskResponse, Citation, HealthResponse, Metrics
-from app.telemetry import Telemetry
-from app.vector_store import VectorStore
+from app.core.config import (LOG_LEVEL, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_TTL_SECONDS, VECTOR_STORE_PATH)
+from app.services.prompt import iter_chunk_citations
+from app.services.rag import RagAnswer, RagEngine, RagRequest
+from app.api.schemas import AskRequest, AskResponse, Citation, HealthResponse, Metrics
+from app.core.telemetry import Telemetry
+from app.components.vector_store import VectorStore
 
 
 logger = logging.getLogger(__name__)
@@ -40,25 +42,45 @@ _rate_limit_cache: TTLCache[str, int] = TTLCache(
     maxsize=RATE_LIMIT_MAX_REQUESTS * 4, ttl=RATE_LIMIT_TTL_SECONDS
 )
 
+NO_ANSWER_PHRASES = [
+    "no answer found",
+    "insufficient information",
+    "could not find",
+]
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Attempt to load the FAISS vector store when the API boots."""
-    _ensure_vector_store_loaded()
+
+def _load_index_html() -> str:
+    """Load the UI template from disk, caching it in memory."""
     global _index_html_cache
     if _index_html_cache is None:
-        templates_dir = Path(__file__).with_name("templates")
+        templates_dir = Path(__file__).resolve().parent.parent / "templates"
         index_path = templates_dir / "index.html"
         try:
             _index_html_cache = index_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             logger.warning("UI template missing at %s", index_path)
             _index_html_cache = "<html><body><h1>UI template missing.</h1></body></html>"
+    return _index_html_cache
 
-    json_logging.init_fastapi(enable_json=True, custom_formatter=json_logging.UnifiedJSONFormatter)
-    json_logging.init_request_instrument(app)
-    logging.basicConfig(stream=sys.stdout, level=LOG_LEVEL)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Attempt to load the FAISS vector store when the API boots."""
+    _ensure_vector_store_loaded()
+    # Pre-load the UI template
+    _load_index_html()
+
+    # Configure JSON logging
+    formatter = pythonjsonlogger.jsonlogger.JsonFormatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
+    logHandler = logging.StreamHandler(sys.stdout)
+    logHandler.setFormatter(formatter)
+    logger.addHandler(logHandler)
     logger.setLevel(LOG_LEVEL)
+    # To prevent duplicate logs when Uvicorn also configures logging
+    logger.propagate = False
+    
     yield
 
 
@@ -89,7 +111,13 @@ def _decrement_counter(counter_name: str) -> None:
 
 
 async def rate_limit_dependency(request: Request) -> None:
-    client_ip = request.client.host if request.client else "unknown"
+    # Support X-Forwarded-For for proxies, fallback to client host
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else "unknown"
+
     with _metrics_lock:
         count = _rate_limit_cache.get(client_ip, 0)
         if count >= RATE_LIMIT_MAX_REQUESTS:
@@ -136,6 +164,26 @@ def _get_vector_store_or_error() -> VectorStore:
 _rag_engine = RagEngine(store_getter=_get_vector_store_or_error)
 
 
+def _update_trace_with_answer(trace: Any, answer: RagAnswer) -> None:
+    """Helper to update the telemetry trace with the final answer and metrics."""
+    if not trace:
+        return
+    trace.update(
+        output={"answer": answer.answer, "citations": [c.model_dump() for c in answer.citations]},
+        metadata=_serialize_metrics(answer),
+        usage_details={
+            "prompt_tokens": answer.tokens.prompt,
+            "completion_tokens": answer.tokens.completion,
+        },
+        cost_details={
+            "prompt_cost": answer.costs.prompt_usd,
+            "completion_cost": answer.costs.completion_usd,
+            "total_cost": answer.costs.total,
+        },
+    )
+    Telemetry.get_instance().flush()
+
+
 @app.post("/ask", response_model=AskResponse)
 async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_dependency)) -> AskResponse | StreamingResponse:
     """Retrieve relevant context, run the LLM, and return an answer with citations."""
@@ -144,51 +192,46 @@ async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_d
     
     # Start LangFuse trace
     telemetry = Telemetry.get_instance()
-    trace = telemetry.trace(
+    with telemetry.start_trace_span(
         name="ask-request",
         input={"question": request.question, "airline": request.airline, "top_k": request.top_k},
         metadata={"stream": request.stream}
-    )
-
-    rag_request = RagRequest(
-        question=request.question,
-        top_k=request.top_k,
-        airline=request.airline,
-    )
-
-    if request.stream:
-        # Pass trace to streaming handler to update it on completion
-        return StreamingResponse(
-            _iter_streaming_response(rag_request, trace),
-            media_type="text/event-stream",
+    ) as trace:
+        rag_request = RagRequest(
+            question=request.question,
+            top_k=request.top_k,
+            airline=request.airline,
         )
 
-    try:
-        answer = await _run_rag_with_handling(rag_request)
-        _log_answer("json", answer, request.airline)
-        
-        # Update trace with success
-        trace.update(
-            output={"answer": answer.answer, "citations": [c.model_dump() for c in answer.citations]},
-            metadata=_serialize_metrics(answer)
-        )
-        telemetry.flush()
-        
-        return AskResponse(answer=answer.answer, citations=answer.citations)
-    except HTTPException as e:
-        _increment_counter("errors_total")
-        trace.update(metadata={"error": str(e)})
-        telemetry.flush()
-        raise e
-    except Exception as e:
-        _increment_counter("errors_total")
-        trace.update(metadata={"error": str(e)})
-        telemetry.flush()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error."
-        ) from e
-    finally:
-        _decrement_counter("requests_current")
+        if request.stream:
+            # Pass trace to streaming handler to update it on completion
+            return StreamingResponse(
+                _iter_streaming_response(rag_request, trace),
+                media_type="text/event-stream",
+            )
+
+        try:
+            answer = await _run_rag_with_handling(rag_request)
+            _log_answer("json", answer, request.airline)
+            
+            # Update trace with success
+            _update_trace_with_answer(trace, answer)
+            
+            return AskResponse(answer=answer.answer, citations=answer.citations)
+        except HTTPException as e:
+            _increment_counter("errors_total")
+            trace.update_trace(metadata={"error": str(e)})
+            telemetry.flush()
+            raise e
+        except Exception as e:
+            _increment_counter("errors_total")
+            trace.update_trace(metadata={"error": str(e)})
+            telemetry.flush()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error."
+            ) from e
+        finally:
+            _decrement_counter("requests_current")
 
 
 async def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
@@ -196,7 +239,7 @@ async def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
         answer = await _rag_engine.answer(rag_request)
         # If the LLM explicitly states no answer, return a 404.
         # This handles cases where the RAG system determines it lacks sufficient evidence.
-        if any(term in answer.answer.lower() for term in ["no answer found", "insufficient information", "could not find"]):
+        if any(term in answer.answer.lower() for term in NO_ANSWER_PHRASES):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="No answer found based on the provided policies."
             )
@@ -232,12 +275,7 @@ async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -
             answer = cast(RagAnswer, payload)
             _log_answer("stream", answer, rag_request.airline)
             
-            if trace:
-                trace.update(
-                    output={"answer": answer.answer, "citations": [c.model_dump() for c in answer.citations]},
-                    metadata=_serialize_metrics(answer)
-                )
-                Telemetry.get_instance().flush()
+            _update_trace_with_answer(trace, answer)
 
             response_body = AskResponse(
                 answer=answer.answer,
@@ -256,14 +294,14 @@ async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -
     except HTTPException:
         _increment_counter("errors_total")
         if trace:
-            trace.update(metadata={"error": "HTTPException"})
+            trace.update_trace(metadata={"error": "HTTPException"})
             Telemetry.get_instance().flush()
         raise
     except Exception as exc:  # pragma: no cover
         _increment_counter("errors_total")
         logger.exception("Streaming answer failed: %s", exc)
         if trace:
-            trace.update(metadata={"error": str(exc)})
+            trace.update_trace(metadata={"error": str(exc)})
             Telemetry.get_instance().flush()
         yield _format_sse({"type": "error", "message": "LLM streaming failed."})
     finally:
@@ -276,22 +314,22 @@ async def ask_stream_route(request: AskRequest, rate_limit: None = Depends(rate_
     _increment_counter("requests_current")
     
     telemetry = Telemetry.get_instance()
-    trace = telemetry.trace(
+    with telemetry.start_trace_span(
         name="ask-stream",
         input={"question": request.question, "airline": request.airline, "top_k": request.top_k},
         metadata={"stream": True, "format": "ndjson"}
-    )
+    ) as trace:
 
-    rag_request = RagRequest(
-        question=request.question,
-        top_k=request.top_k,
-        airline=request.airline,
-    )
+        rag_request = RagRequest(
+            question=request.question,
+            top_k=request.top_k,
+            airline=request.airline,
+        )
 
-    return StreamingResponse(
-        _iter_ndjson_stream(rag_request, trace),
-        media_type="application/x-ndjson",
-    )
+        return StreamingResponse(
+            _iter_ndjson_stream(rag_request, trace),
+            media_type="application/x-ndjson",
+        )
 
 
 async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Iterable[bytes]:
@@ -314,12 +352,7 @@ async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Ite
             answer = cast(RagAnswer, payload)
             _log_answer("ndjson", answer, rag_request.airline)
             
-            if trace:
-                trace.update(
-                    output={"answer": answer.answer, "citations": [c.model_dump() for c in answer.citations]},
-                    metadata=_serialize_metrics(answer)
-                )
-                Telemetry.get_instance().flush()
+            _update_trace_with_answer(trace, answer)
 
             yield _json_line(
                 {
@@ -334,14 +367,14 @@ async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Ite
     except HTTPException:
         _increment_counter("errors_total")
         if trace:
-            trace.update(metadata={"error": "HTTPException"})
+            trace.update_trace(metadata={"error": "HTTPException"})
             Telemetry.get_instance().flush()
         raise
     except Exception as exc:  # pragma: no cover
         _increment_counter("errors_total")
         logger.exception("Streaming answer failed: %s", exc)
         if trace:
-            trace.update(metadata={"error": str(exc)})
+            trace.update_trace(metadata={"error": str(exc)})
             Telemetry.get_instance().flush()
         yield _json_line({"event": "error", "message": "LLM streaming failed."})
     finally:
@@ -373,7 +406,7 @@ async def metrics_route() -> Metrics:
 @app.get("/", response_class=HTMLResponse)
 async def ui_route() -> HTMLResponse:
     """Serve the lightweight UI for asking questions."""
-    return _index_html_cache
+    return _load_index_html()
 
 
 def _format_sse(payload: dict) -> str:
@@ -415,14 +448,4 @@ def _log_answer(channel: str, answer: RagAnswer, airline: Optional[str]) -> None
     )
 
 
-def _load_index_html() -> str:
-    global _index_html_cache
-    if _index_html_cache is None:
-        templates_dir = Path(__file__).with_name("templates")
-        index_path = templates_dir / "index.html"
-        try:
-            _index_html_cache = index_path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            logger.warning("UI template missing at %s", index_path)
-            _index_html_cache = "<html><body><h1>UI template missing.</h1></body></html>"
-    return _index_html_cache
+

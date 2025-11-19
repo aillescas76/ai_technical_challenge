@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import argparse
 import json
 import logging
@@ -9,11 +10,11 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from app.airlines import normalize_airline_key
-from app.config import DATA_DIR, EVAL_DATASET_PATH, VECTOR_STORE_PATH
-from app.rag import RagEngine, RagRequest
-from app.telemetry import LangfuseReporter
-from app.vector_store import VectorStore
+from app.core.airlines import normalize_airline_key
+from app.core.config import DATA_DIR, EVAL_DATASET_PATH, VECTOR_STORE_PATH
+from app.services.rag import RagEngine, RagRequest
+from app.core.telemetry import LangfuseReporter
+from app.components.vector_store import VectorStore
 
 
 logger = logging.getLogger(__name__)
@@ -128,7 +129,7 @@ class EvalRunner:
         self._engine = RagEngine(lambda: store)
         self._reporter = reporter or LangfuseReporter()
 
-    def run(
+    async def run(
         self,
         *,
         limit: Optional[int] = None,
@@ -145,7 +146,7 @@ class EvalRunner:
 
         with output_path.open("w", encoding="utf-8") as sink:
             for example in subset:
-                rag_answer = self._engine.answer(
+                rag_answer = await self._engine.answer(
                     RagRequest(question=example.question, top_k=5, airline=None)
                 )
                 metrics = _evaluate_example(example, rag_answer)
@@ -179,22 +180,33 @@ class EvalRunner:
         if not self._reporter.is_enabled():
             return
         try:
-            self._reporter.log_eval(
-                run_name="rag-eval",
-                input_payload={"question": example.question, "id": example.id},
-                output_payload={
+            with self._reporter._telemetry.start_trace_span(
+                name="rag-eval",
+                input={"question": example.question, "id": example.id},
+                output={
                     "answer": answer.answer,
                     "citations": [citation.model_dump() for citation in answer.citations],
                 },
-                metrics={
-                    **metrics,
+                metadata={
                     "expected_citations": [
                         {"airline": cite.airline, "title": cite.title}
                         for cite in example.expected_citations
                     ],
+                    "tags": ["eval-harness"] + example.tags,
                 },
-                tags=["eval-harness"] + example.tags,
-            )
+                usage_details={
+                    "prompt_tokens": metrics["tokens"]["prompt"],
+                    "completion_tokens": metrics["tokens"]["completion"],
+                },
+                cost_details={
+                    "total_cost": metrics["cost_usd"],
+                },
+            ) as trace:
+                for key, value in metrics.items():
+                    if isinstance(value, (int, float)):
+                        trace.score(name=key, value=value)
+
+            self._reporter._telemetry.flush()
         except Exception:  # pragma: no cover
             logger.exception("Failed to emit LangFuse trace for %s", example.id)
 
@@ -302,7 +314,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     dataset = load_eval_dataset(args.dataset)
     runner = EvalRunner(dataset)
-    summary = runner.run(limit=args.limit, output_path=args.output)
+    summary = asyncio.run(runner.run(limit=args.limit, output_path=args.output))
     print(json.dumps(summary, indent=2))
     return 0
 

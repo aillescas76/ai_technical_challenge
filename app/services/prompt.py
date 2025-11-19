@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
-from app.llm import ChatMessage
+from app.components.llm import ChatMessage
 
 
 DEFAULT_SYSTEM_PROMPT = """You are an airline policy specialist.
