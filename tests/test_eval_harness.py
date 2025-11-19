@@ -129,7 +129,8 @@ def test_retrieval_and_citation_scores() -> None:
     assert citation_recall == pytest.approx(0.5)
 
 
-def test_eval_runner_creates_results_file(
+@pytest.mark.asyncio
+async def test_eval_runner_creates_results_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     example = EvalExample(
@@ -154,7 +155,7 @@ def test_eval_runner_creates_results_file(
         def __init__(self, store_provider) -> None:
             self.store_provider = store_provider
 
-        def answer(self, request):
+        async def answer(self, request):
             return _sample_answer("AA charges $40.")
 
     monkeypatch.setattr(eval_module, "LangfuseReporter", lambda: _FakeReporter())
@@ -165,7 +166,7 @@ def test_eval_runner_creates_results_file(
 
     output = tmp_path / "results.jsonl"
     runner = eval_module.EvalRunner([example])
-    summary = runner.run(output_path=output)
+    summary = await runner.run(output_path=output)
 
     assert summary["dataset_size"] == 1
     data = output.read_text(encoding="utf-8").strip().splitlines()
