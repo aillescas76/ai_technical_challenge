@@ -7,7 +7,6 @@ from typing import Iterable, List, Sequence
 
 from app.components.llm import ChatMessage
 
-
 DEFAULT_SYSTEM_PROMPT = """You are an airline policy specialist.
 Use ONLY the provided policy excerpts to answer.
 If the excerpts do not answer the question, reply with: "No answer found based on available policies." without additional text.

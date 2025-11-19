@@ -7,11 +7,26 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from threading import Lock
 from time import perf_counter
-from typing import Callable, Iterable, Iterator, List, Literal, Optional, Sequence, Tuple
+from typing import (
+    Callable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 import tiktoken
 from starlette.concurrency import run_in_threadpool
 
+from app.api.schemas import Citation
+from app.components.llm import (
+    async_chat_completion,
+    async_embed_texts_with_litellm,
+    async_stream_chat_completion,
+)
+from app.components.vector_store import SearchResult, VectorStore
 from app.core.airlines import normalize_airline_key
 from app.core.config import (
     ASK_CACHE_MAX_ITEMS,
@@ -23,18 +38,7 @@ from app.core.config import (
     MODEL_COST_LOOKUP,
     TOKEN_ENCODING_NAME,
 )
-from app.components.llm import (
-    async_chat_completion,
-    async_embed_texts_with_litellm,
-    async_stream_chat_completion,
-    chat_completion,
-    embed_texts_with_litellm,
-    stream_chat_completion,
-)
 from app.services.prompt import ContextChunk, build_grounded_answer_messages
-from app.api.schemas import Citation
-from app.components.vector_store import SearchResult, VectorStore
-
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +293,7 @@ class RagEngine:
         query_embedding = embeddings[0]
 
         search_k = request.top_k if request.airline is None else request.top_k * 3
-        
+
         # Offload CPU-bound search to threadpool
         results = await run_in_threadpool(
             store.search_by_embedding, query_embedding, top_k=search_k

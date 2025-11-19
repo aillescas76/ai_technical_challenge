@@ -3,17 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.services.ingest import (
-    DocumentChunk,
     DocumentMetadata,
     RawDocument,
     chunk_document,
-    chunk_documents,
-    infer_airline_from_path,
-    infer_category_from_title,
-    infer_title_from_path,
+    get_token_encoder,
     load_markdown_document,
     load_pdf_document,
-    get_token_encoder,
 )
 
 

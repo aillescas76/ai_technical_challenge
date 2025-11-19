@@ -76,16 +76,16 @@ class _DummyObservation:
     """No-op observation object for when telemetry is disabled."""
     def update(self, **kwargs: Any) -> None:
         pass
-    
+
     def score(self, **kwargs: Any) -> None:
         pass
-    
+
     def update_trace(self, **kwargs: Any) -> None:
         pass
 
     def __enter__(self) -> _DummyObservation:
         return self
-        
+
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         pass
 
@@ -112,7 +112,7 @@ class LangfuseReporter:
     ) -> None:
         if not self.is_enabled():
             return
-        
+
         # Use the centralized telemetry client
         try:
             with self._telemetry.start_trace_span(

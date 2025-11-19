@@ -2,27 +2,30 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.handlers
 import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
-from contextlib import asynccontextmanager
-from typing import Iterable, Iterator, Optional, cast, List, Any
-
-import logging.handlers
+from typing import Any, Iterable, Iterator, List, Optional, cast
 
 import pythonjsonlogger.jsonlogger
 from cachetools import TTLCache
-from fastapi import Depends, FastAPI, HTTPException, status, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, StreamingResponse
 
-from app.core.config import (LOG_LEVEL, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_TTL_SECONDS, VECTOR_STORE_PATH)
+from app.api.schemas import AskRequest, AskResponse, Citation, HealthResponse, Metrics
+from app.components.vector_store import VectorStore
+from app.core.config import (
+    LOG_LEVEL,
+    RATE_LIMIT_MAX_REQUESTS,
+    RATE_LIMIT_TTL_SECONDS,
+    VECTOR_STORE_PATH,
+)
+from app.core.telemetry import Telemetry
 from app.services.prompt import iter_chunk_citations
 from app.services.rag import RagAnswer, RagEngine, RagRequest
-from app.api.schemas import AskRequest, AskResponse, Citation, HealthResponse, Metrics
-from app.core.telemetry import Telemetry
-from app.components.vector_store import VectorStore
-
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +83,7 @@ async def lifespan(app: FastAPI):
     logger.setLevel(LOG_LEVEL)
     # To prevent duplicate logs when Uvicorn also configures logging
     logger.propagate = False
-    
+
     yield
 
 
@@ -189,7 +192,7 @@ async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_d
     """Retrieve relevant context, run the LLM, and return an answer with citations."""
     _increment_counter("requests_total")
     _increment_counter("requests_current")
-    
+
     # Start LangFuse trace
     telemetry = Telemetry.get_instance()
     with telemetry.start_trace_span(
@@ -213,10 +216,10 @@ async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_d
         try:
             answer = await _run_rag_with_handling(rag_request)
             _log_answer("json", answer, request.airline)
-            
+
             # Update trace with success
             _update_trace_with_answer(trace, answer)
-            
+
             return AskResponse(answer=answer.answer, citations=answer.citations)
         except HTTPException as e:
             _increment_counter("errors_total")
@@ -274,7 +277,7 @@ async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -
                 continue
             answer = cast(RagAnswer, payload)
             _log_answer("stream", answer, rag_request.airline)
-            
+
             _update_trace_with_answer(trace, answer)
 
             response_body = AskResponse(
@@ -312,7 +315,7 @@ async def ask_stream_route(request: AskRequest, rate_limit: None = Depends(rate_
     """Stream NDJSON events for the UI template."""
     _increment_counter("requests_total")
     _increment_counter("requests_current")
-    
+
     telemetry = Telemetry.get_instance()
     with telemetry.start_trace_span(
         name="ask-stream",
@@ -351,7 +354,7 @@ async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Ite
                 continue
             answer = cast(RagAnswer, payload)
             _log_answer("ndjson", answer, rag_request.airline)
-            
+
             _update_trace_with_answer(trace, answer)
 
             yield _json_line(

@@ -83,7 +83,7 @@ class VectorStore:
         distances, indices = self.index.search(query, top_k)
 
         results: List[SearchResult] = []
-        for score, idx in zip(distances[0], indices[0]):
+        for score, idx in zip(distances[0], indices[0], strict=False):
             if idx < 0 or idx >= self.size:
                 continue
             results.append(
@@ -106,7 +106,7 @@ class VectorStore:
         faiss.write_index(self.index, str(index_path))
 
         with meta_path.open("w", encoding="utf-8") as f:
-            for doc_id, text, metadata in zip(self._ids, self._texts, self._metadatas):
+            for doc_id, text, metadata in zip(self._ids, self._texts, self._metadatas, strict=False):
                 record = {
                     "id": doc_id,
                     "text": text,

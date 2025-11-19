@@ -12,7 +12,6 @@ from app.core.config import (
     LLM_BASE_URL,
     LLM_MODEL,
     LLM_MODEL_FALLBACKS,
-    LLM_PROVIDER_OVERRIDES,
     LLM_TIMEOUT_SECONDS,
 )
 
@@ -35,7 +34,7 @@ def _update_trace_usage(response: Any) -> None:
     """Helper to update the current Langfuse observation with usage and cost metrics."""
     if not langfuse:
         return
-    
+
     try:
         # Calculate cost
         # litellm.completion_cost usually handles ModelResponse or EmbeddingResponse if standard keys exist
@@ -43,7 +42,7 @@ def _update_trace_usage(response: Any) -> None:
             cost = litellm.completion_cost(completion_response=response)
         except Exception:
             cost = None
-        
+
         # Extract usage
         usage = getattr(response, "usage", None)
         usage_details = {}
@@ -55,7 +54,7 @@ def _update_trace_usage(response: Any) -> None:
                 "output": getattr(usage, "completion_tokens", 0),
                 "total": getattr(usage, "total_tokens", 0)
             }
-            
+
         # Update observation
         # We use update_current_observation which finds the active generation created by @observe
         langfuse.update_current_observation(
