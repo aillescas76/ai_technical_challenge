@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import argparse
 import json
 import logging
@@ -128,7 +129,7 @@ class EvalRunner:
         self._engine = RagEngine(lambda: store)
         self._reporter = reporter or LangfuseReporter()
 
-    def run(
+    async def run(
         self,
         *,
         limit: Optional[int] = None,
@@ -145,7 +146,7 @@ class EvalRunner:
 
         with output_path.open("w", encoding="utf-8") as sink:
             for example in subset:
-                rag_answer = self._engine.answer(
+                rag_answer = await self._engine.answer(
                     RagRequest(question=example.question, top_k=5, airline=None)
                 )
                 metrics = _evaluate_example(example, rag_answer)
@@ -302,7 +303,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     dataset = load_eval_dataset(args.dataset)
     runner = EvalRunner(dataset)
-    summary = runner.run(limit=args.limit, output_path=args.output)
+    summary = asyncio.run(runner.run(limit=args.limit, output_path=args.output))
     print(json.dumps(summary, indent=2))
     return 0
 
