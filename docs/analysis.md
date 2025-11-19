@@ -10,7 +10,7 @@ This document analyzes the challenge described in `README.md` and proposes a pra
 
 ## Proposed Architecture
 
-- API/UI: FastAPI + Uvicorn (minimal HTML page or JSON endpoint). Optional Streamlit for rapid UI, but FastAPI offers clean API surface and built-in docs.
+- API/UI: FastAPI + Uvicorn (minimal HTML page or JSON endpoint).
 - Ingestion: Parse Markdown directly; extract text and links from PDFs using `pypdf`. Normalize metadata.
 - Vector DB: FAISS (CPU) persisted on disk for fast local retrieval; alternatives like Chroma are acceptable.
 - Embeddings: OpenAI `text-embedding-3-small` for cost/speed; fallback to `sentence-transformers/all-MiniLM-L6-v2` offline.

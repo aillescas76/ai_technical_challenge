@@ -4,11 +4,29 @@
 
 This project implements a small, retrieval‑augmented generation (RAG) application that answers user questions about airline policies (Delta, United, American Airlines) using an LLM and a vector database. Policy documents in `policies/` (Markdown and PDF) are ingested, chunked, embedded, and indexed for similarity search. The API assembles relevant context and asks the LLM to produce concise, grounded answers with citations to the source documents.
 
+### Documentation
+
+- Full challenge description (original README.md file): [docs/challenge.md](docs/challenge.md)
+- Analysis and proposed solution: [docs/analysis.md](docs/analysis.md)
+- System Architecture: [docs/architecture.md](docs/architecture.md)
+- UI Screenshot: [docs/ui_screenshot.png](docs/ui_screenshot.png)
+
+### Design Choices and Tradeoffs
+
+- **RAG Implementation**: The application utilizes a standard RAG pattern, combining a FAISS vector store for efficient retrieval with an LLM (gpt-5-mini by default) for generative answers. This approach prioritizes grounded responses and reduces hallucination.
+- **Vector Store**: FAISS was chosen for its simplicity and efficiency in local, on-disk index management, suitable for this project's scale. For larger deployments, cloud-native vector databases like Pinecone or Weaviate would be considered.
+- **LLM and Embeddings**: LiteLLM is used to abstract away specific LLM and embedding providers, allowing easy switching between OpenAI and other compatible models. This provides flexibility and cost optimization.
+- **Streaming**: Server-Sent Events (SSE) are used for streaming answers to provide a more responsive user experience, especially for longer generations.
+- **Caching**: An in-memory cache is implemented for the `/ask` endpoint to reduce latency and LLM costs for repeated queries.
+- **Error Handling**: Comprehensive error handling is in place, providing user-friendly messages for common issues like missing vector stores, LLM generation failures, and rate limit excesses.
+- **Structured Logging**: JSON-formatted logs are used for improved observability and easier integration with logging platforms.
+- **Rate Limiting**: A basic rate limiting mechanism based on client IP is included to prevent abuse and ensure fair usage of the API.
+
 ### Running Everything with Docker
 
 All workflows (ingestion and the future API) are executed via Docker so you never have to install Python dependencies directly on your host.
 
-1. Copy `.env.example` to `.env` and fill in the required variables (e.g., `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`). Docker Compose automatically loads this file. When using providers that LiteLLM cannot infer automatically (e.g., Anthropics' `claude-3-5-haiku`), set `LLM_PROVIDER_OVERRIDES` to a comma-separated list such as `claude-3-5-haiku:anthropic` (JSON is also accepted) so the runtime passes the correct provider hint.
+1. Copy `.env.example` to `.env` and fill in the required variables (e.g., `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`).
 2. Build the shared image used by every service:
    ```bash
    docker compose build
@@ -32,12 +50,6 @@ All workflows (ingestion and the future API) are executed via Docker so you neve
 
 No host-side `pip install` steps are required; the Docker image contains all runtime dependencies.
 
-### Documentation
-
-- Full challenge description (original README.md file): [docs/challenge.md](docs/challenge.md)
-- Analysis and proposed solution: [docs/analysis.md](docs/analysis.md)
-- System Architecture: [docs/architecture.md](docs/architecture.md)
-
 ### Structured Logging
 
 The application uses structured JSON logging for all output, making it easier to parse and analyze in various environments. The log level can be configured via the `LOG_LEVEL` environment variable (default: `INFO`). Valid values include `DEBUG`, `INFO`, `WARNING`, `ERROR`, and `CRITICAL`.
@@ -56,17 +68,6 @@ Basic rate limiting is implemented to protect the API from abuse. Requests are l
 - `GET /metrics` returns basic monitoring metrics for the service, including total requests, current requests, errors, and uptime.
 - Setting `stream: true` upgrades the response to a Server-Sent Events stream (`text/event-stream`). Each event contains incremental tokens followed by a `final` payload with the rendered answer, citations, token counts, and latency/cost metadata.
 - The backend keeps a short-lived in-memory cache keyed by normalized question + airline filter so repeated queries are served instantly without re-calling the LLM.
-
-### Design Choices and Tradeoffs
-
-- **RAG Implementation**: The application utilizes a standard RAG pattern, combining a FAISS vector store for efficient retrieval with an LLM (gpt-5-mini by default) for generative answers. This approach prioritizes grounded responses and reduces hallucination.
-- **Vector Store**: FAISS was chosen for its simplicity and efficiency in local, on-disk index management, suitable for this project's scale. For larger deployments, cloud-native vector databases like Pinecone or Weaviate would be considered.
-- **LLM and Embeddings**: LiteLLM is used to abstract away specific LLM and embedding providers, allowing easy switching between OpenAI and other compatible models. This provides flexibility and cost optimization.
-- **Streaming**: Server-Sent Events (SSE) are used for streaming answers to provide a more responsive user experience, especially for longer generations.
-- **Caching**: An in-memory cache is implemented for the `/ask` endpoint to reduce latency and LLM costs for repeated queries.
-- **Error Handling**: Comprehensive error handling is in place, providing user-friendly messages for common issues like missing vector stores, LLM generation failures, and rate limit excesses.
-- **Structured Logging**: JSON-formatted logs are used for improved observability and easier integration with logging platforms.
-- **Rate Limiting**: A basic rate limiting mechanism based on client IP is included to prevent abuse and ensure fair usage of the API.
 
 ### Example Q&A
 
@@ -103,7 +104,7 @@ Here are example answers for key queries, demonstrating the application's abilit
 
 ### Observability & Tracing
 
-The application is instrumented with [LangFuse](https://langfuse.com/) for full-stack observability.
+The application is instrumented with [LangFuse](https://langfuse.com/) for full-stack observability. For detailed information on trace structures, metrics, and dashboard setup, please refer to the [Langfuse Integration Guide](docs/langfuse.md).
 
 **Configuration:**
 Ensure the following environment variables are set (see `.env.example`):
@@ -134,4 +135,5 @@ In the LangFuse UI, you can create dashboards to monitor:
 
 ### Future Improvements
 
+- **Polish of the traces**: Polish the traces for better observability and debugging.
 - **Prompt Injection Defense**: Implement a more robust sanitization layer or prompt injection detection mechanism. While the current setup places instructions after user input (a basic mitigation), a dedicated defense could be crucial if the application serves untrusted clients or faces advanced adversarial prompts. For internal or trusted clients, the current approach might be sufficient.

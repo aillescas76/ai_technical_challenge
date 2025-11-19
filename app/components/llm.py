@@ -16,8 +16,55 @@ from app.core.config import (
     LLM_TIMEOUT_SECONDS,
 )
 
+try:
+    import langfuse
+    from langfuse.decorators import observe
+except ImportError:
+    langfuse = None
+    # No-op decorator if langfuse is not present
+    def observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 
 logger = logging.getLogger(__name__)
+
+
+def _update_trace_usage(response: Any) -> None:
+    """Helper to update the current Langfuse observation with usage and cost metrics."""
+    if not langfuse:
+        return
+    
+    try:
+        # Calculate cost
+        # litellm.completion_cost usually handles ModelResponse or EmbeddingResponse if standard keys exist
+        try:
+            cost = litellm.completion_cost(completion_response=response)
+        except Exception:
+            cost = None
+        
+        # Extract usage
+        usage = getattr(response, "usage", None)
+        usage_details = {}
+        if usage:
+            # specific mapping for litellm usage object to langfuse
+            # Litellm Usage object often has attributes matching OpenAI standard
+            usage_details = {
+                "input": getattr(usage, "prompt_tokens", 0),
+                "output": getattr(usage, "completion_tokens", 0),
+                "total": getattr(usage, "total_tokens", 0)
+            }
+            
+        # Update observation
+        # We use update_current_observation which finds the active generation created by @observe
+        langfuse.update_current_observation(
+            usage_details=usage_details,
+            cost_details={"total": float(cost)} if cost is not None else None,
+            model=getattr(response, "model", None)
+        )
+    except Exception:
+        logger.warning("Failed to update Langfuse trace with usage metrics", exc_info=True)
 
 
 Role = Literal["system", "user", "assistant", "tool"]
@@ -73,6 +120,7 @@ def _get_embeddings_model_name(explicit_model: Optional[str]) -> str:
     return model_name
 
 
+@observe(as_type="generation")
 async def async_chat_completion(
     messages: Sequence[ChatMessage],
     *,
@@ -101,9 +149,11 @@ async def async_chat_completion(
         )
         raise
 
+    _update_trace_usage(response)
     return _extract_message_content(response)
 
 
+@observe(as_type="generation")
 async def async_stream_chat_completion(
     messages: Sequence[ChatMessage],
     *,
@@ -139,6 +189,7 @@ async def async_stream_chat_completion(
             yield content_piece
 
 
+@observe(as_type="generation")
 def chat_completion(
     messages: Sequence[ChatMessage],
     *,
@@ -167,9 +218,11 @@ def chat_completion(
         )
         raise
 
+    _update_trace_usage(response)
     return _extract_message_content(response)
 
 
+@observe(as_type="generation")
 def stream_chat_completion(
     messages: Sequence[ChatMessage],
     *,
@@ -205,6 +258,7 @@ def stream_chat_completion(
             yield content_piece
 
 
+@observe(as_type="generation")
 async def async_embed_texts_with_litellm(
     texts: Sequence[str],
     *,
@@ -224,6 +278,7 @@ async def async_embed_texts_with_litellm(
             "timeout": request_timeout,
         }
         response = await _client.aembedding(**payload)
+        _update_trace_usage(response)
     except Exception:
         logger.exception("LiteLLM async embeddings request failed for model %s", model_name)
         raise
@@ -236,6 +291,7 @@ async def async_embed_texts_with_litellm(
     ]
 
 
+@observe(as_type="generation")
 def embed_texts_with_litellm(
     texts: Sequence[str],
     *,
@@ -255,6 +311,7 @@ def embed_texts_with_litellm(
             "timeout": request_timeout,
         }
         response = _client.embedding(**payload)
+        _update_trace_usage(response)
     except Exception:
         logger.exception("LiteLLM embeddings request failed for model %s", model_name)
         raise

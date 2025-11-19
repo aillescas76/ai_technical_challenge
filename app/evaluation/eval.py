@@ -180,7 +180,7 @@ class EvalRunner:
         if not self._reporter.is_enabled():
             return
         try:
-            trace = self._reporter._telemetry.trace(
+            with self._reporter._telemetry.start_trace_span(
                 name="rag-eval",
                 input={"question": example.question, "id": example.id},
                 output={
@@ -194,13 +194,18 @@ class EvalRunner:
                     ],
                     "tags": ["eval-harness"] + example.tags,
                 },
-                tags=["eval-harness"] + example.tags,
-            )
-            
-            for key, value in metrics.items():
-                if isinstance(value, (int, float)):
-                    trace.score(name=key, value=value)
-            
+                usage_details={
+                    "prompt_tokens": metrics["tokens"]["prompt"],
+                    "completion_tokens": metrics["tokens"]["completion"],
+                },
+                cost_details={
+                    "total_cost": metrics["cost_usd"],
+                },
+            ) as trace:
+                for key, value in metrics.items():
+                    if isinstance(value, (int, float)):
+                        trace.score(name=key, value=value)
+
             self._reporter._telemetry.flush()
         except Exception:  # pragma: no cover
             logger.exception("Failed to emit LangFuse trace for %s", example.id)

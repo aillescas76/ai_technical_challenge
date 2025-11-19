@@ -170,7 +170,16 @@ def _update_trace_with_answer(trace: Any, answer: RagAnswer) -> None:
         return
     trace.update(
         output={"answer": answer.answer, "citations": [c.model_dump() for c in answer.citations]},
-        metadata=_serialize_metrics(answer)
+        metadata=_serialize_metrics(answer),
+        usage_details={
+            "prompt_tokens": answer.tokens.prompt,
+            "completion_tokens": answer.tokens.completion,
+        },
+        cost_details={
+            "prompt_cost": answer.costs.prompt_usd,
+            "completion_cost": answer.costs.completion_usd,
+            "total_cost": answer.costs.total,
+        },
     )
     Telemetry.get_instance().flush()
 
@@ -183,47 +192,46 @@ async def ask_route(request: AskRequest, rate_limit: None = Depends(rate_limit_d
     
     # Start LangFuse trace
     telemetry = Telemetry.get_instance()
-    trace = telemetry.trace(
+    with telemetry.start_trace_span(
         name="ask-request",
         input={"question": request.question, "airline": request.airline, "top_k": request.top_k},
         metadata={"stream": request.stream}
-    )
-
-    rag_request = RagRequest(
-        question=request.question,
-        top_k=request.top_k,
-        airline=request.airline,
-    )
-
-    if request.stream:
-        # Pass trace to streaming handler to update it on completion
-        return StreamingResponse(
-            _iter_streaming_response(rag_request, trace),
-            media_type="text/event-stream",
+    ) as trace:
+        rag_request = RagRequest(
+            question=request.question,
+            top_k=request.top_k,
+            airline=request.airline,
         )
 
-    try:
-        answer = await _run_rag_with_handling(rag_request)
-        _log_answer("json", answer, request.airline)
-        
-        # Update trace with success
-        _update_trace_with_answer(trace, answer)
-        
-        return AskResponse(answer=answer.answer, citations=answer.citations)
-    except HTTPException as e:
-        _increment_counter("errors_total")
-        trace.update(metadata={"error": str(e)})
-        telemetry.flush()
-        raise e
-    except Exception as e:
-        _increment_counter("errors_total")
-        trace.update(metadata={"error": str(e)})
-        telemetry.flush()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error."
-        ) from e
-    finally:
-        _decrement_counter("requests_current")
+        if request.stream:
+            # Pass trace to streaming handler to update it on completion
+            return StreamingResponse(
+                _iter_streaming_response(rag_request, trace),
+                media_type="text/event-stream",
+            )
+
+        try:
+            answer = await _run_rag_with_handling(rag_request)
+            _log_answer("json", answer, request.airline)
+            
+            # Update trace with success
+            _update_trace_with_answer(trace, answer)
+            
+            return AskResponse(answer=answer.answer, citations=answer.citations)
+        except HTTPException as e:
+            _increment_counter("errors_total")
+            trace.update_trace(metadata={"error": str(e)})
+            telemetry.flush()
+            raise e
+        except Exception as e:
+            _increment_counter("errors_total")
+            trace.update_trace(metadata={"error": str(e)})
+            telemetry.flush()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error."
+            ) from e
+        finally:
+            _decrement_counter("requests_current")
 
 
 async def _run_rag_with_handling(rag_request: RagRequest) -> RagAnswer:
@@ -286,14 +294,14 @@ async def _iter_streaming_response(rag_request: RagRequest, trace: Any = None) -
     except HTTPException:
         _increment_counter("errors_total")
         if trace:
-            trace.update(metadata={"error": "HTTPException"})
+            trace.update_trace(metadata={"error": "HTTPException"})
             Telemetry.get_instance().flush()
         raise
     except Exception as exc:  # pragma: no cover
         _increment_counter("errors_total")
         logger.exception("Streaming answer failed: %s", exc)
         if trace:
-            trace.update(metadata={"error": str(exc)})
+            trace.update_trace(metadata={"error": str(exc)})
             Telemetry.get_instance().flush()
         yield _format_sse({"type": "error", "message": "LLM streaming failed."})
     finally:
@@ -306,22 +314,22 @@ async def ask_stream_route(request: AskRequest, rate_limit: None = Depends(rate_
     _increment_counter("requests_current")
     
     telemetry = Telemetry.get_instance()
-    trace = telemetry.trace(
+    with telemetry.start_trace_span(
         name="ask-stream",
         input={"question": request.question, "airline": request.airline, "top_k": request.top_k},
         metadata={"stream": True, "format": "ndjson"}
-    )
+    ) as trace:
 
-    rag_request = RagRequest(
-        question=request.question,
-        top_k=request.top_k,
-        airline=request.airline,
-    )
+        rag_request = RagRequest(
+            question=request.question,
+            top_k=request.top_k,
+            airline=request.airline,
+        )
 
-    return StreamingResponse(
-        _iter_ndjson_stream(rag_request, trace),
-        media_type="application/x-ndjson",
-    )
+        return StreamingResponse(
+            _iter_ndjson_stream(rag_request, trace),
+            media_type="application/x-ndjson",
+        )
 
 
 async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Iterable[bytes]:
@@ -359,14 +367,14 @@ async def _iter_ndjson_stream(rag_request: RagRequest, trace: Any = None) -> Ite
     except HTTPException:
         _increment_counter("errors_total")
         if trace:
-            trace.update(metadata={"error": "HTTPException"})
+            trace.update_trace(metadata={"error": "HTTPException"})
             Telemetry.get_instance().flush()
         raise
     except Exception as exc:  # pragma: no cover
         _increment_counter("errors_total")
         logger.exception("Streaming answer failed: %s", exc)
         if trace:
-            trace.update(metadata={"error": str(exc)})
+            trace.update_trace(metadata={"error": str(exc)})
             Telemetry.get_instance().flush()
         yield _json_line({"event": "error", "message": "LLM streaming failed."})
     finally:
