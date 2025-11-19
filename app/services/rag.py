@@ -7,15 +7,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from threading import Lock
 from time import perf_counter
-from typing import (
-    Callable,
-    Iterator,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Tuple,
-)
+from typing import Callable, Iterator, List, Literal, Optional, Sequence, Tuple
 
 import tiktoken
 from starlette.concurrency import run_in_threadpool
