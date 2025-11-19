@@ -9,7 +9,7 @@ This project implements a small, retrieval‑augmented generation (RAG) applicat
 - Full challenge description (original README.md file): [docs/challenge.md](docs/challenge.md)
 - Analysis and proposed solution: [docs/analysis.md](docs/analysis.md)
 - System Architecture: [docs/architecture.md](docs/architecture.md)
-- UI Screenshot: [docs/ui_screenshot.png](docs/ui_screenshot.png)
+- UI Screenshot: ![UI Screenshot](docs/ui_screenshot.png)
 
 ### Design Choices and Tradeoffs
 
@@ -22,9 +22,38 @@ This project implements a small, retrieval‑augmented generation (RAG) applicat
 - **Structured Logging**: JSON-formatted logs are used for improved observability and easier integration with logging platforms.
 - **Rate Limiting**: A basic rate limiting mechanism based on client IP is included to prevent abuse and ensure fair usage of the API.
 
+### Rate Limiting
+
+Basic rate limiting is implemented to protect the API from abuse. Requests are limited per client IP address. The rate limit can be configured via the following environment variables:
+
+- `RATE_LIMIT_TTL_SECONDS`: The time window in seconds for the rate limit (default: `60`).
+- `RATE_LIMIT_MAX_REQUESTS`: The maximum number of requests allowed within the `TTL` window (default: `60`).
+
+### Configuration
+
+The application is configured via environment variables. Copy `.env.example` to `.env` and adjust the values as needed.
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `OPENAI_API_KEY` | API Key for OpenAI (or compatible provider). | *(Required)* |
+| `LLM_BASE_URL` | Base URL for the LLM provider (e.g., for local models). | `None` |
+| `EMBEDDINGS_MODEL` | Model ID for generating text embeddings. | `text-embedding-3-small` |
+| `LLM_MODEL` | Model ID for answer generation. | `gpt-5-mini` |
+| `VECTOR_STORE_PATH` | Directory to persist/load the FAISS index. | `data/faiss` |
+| `LLM_TIMEOUT_SECONDS` | Timeout (in seconds) for LLM requests. | `30` |
+| `EMBEDDINGS_TIMEOUT_SECONDS` | Timeout (in seconds) for embedding requests. | `30` |
+| `ASK_CACHE_MAX_ITEMS` | Maximum number of items in the in-memory cache. | `128` |
+| `ASK_CACHE_TTL_SECONDS` | Time-to-live (seconds) for cached items. | `600` |
+| `LANGFUSE_*` | Telemetry configuration (Public Key, Secret Key, Host). | `None` |
+
+### Prerequisites
+
+- **Docker** (Desktop or Engine)
+- **Docker Compose**
+
 ### Running Everything with Docker
 
-All workflows (ingestion and the future API) are executed via Docker so you never have to install Python dependencies directly on your host.
+All workflows (ingestion and the future API) are executed via Docker, ensuring a consistent environment without manual dependency management.
 
 1. Copy `.env.example` to `.env` and fill in the required variables (e.g., `OPENAI_API_KEY`, `EMBEDDINGS_MODEL`, `LLM_MODEL`).
 2. Build the shared image used by every service:
@@ -48,6 +77,13 @@ All workflows (ingestion and the future API) are executed via Docker so you neve
    docker compose down
    ```
 
+#### Running Tests
+
+To execute the unit test suite inside the container:
+```bash
+docker compose run --rm app pytest
+```
+
 No host-side `pip install` steps are required; the Docker image contains all runtime dependencies.
 
 ### Structured Logging
@@ -64,10 +100,26 @@ Basic rate limiting is implemented to protect the API from abuse. Requests are l
 ### API & Streaming
 
 - `POST /ask` accepts a JSON body with `question`, optional `top_k` (≤8), optional `airline`, and an optional `stream` flag. Responses include concise LLM answers plus structured citations.
-- `POST /ask/stream` also accepts the same parameters and returns a Server-Sent Events stream (`text/event-event-stream`).
+- `POST /ask/stream` also accepts the same parameters and returns a Server-Sent Events stream (`text/event-stream`).
 - `GET /metrics` returns basic monitoring metrics for the service, including total requests, current requests, errors, and uptime.
 - Setting `stream: true` upgrades the response to a Server-Sent Events stream (`text/event-stream`). Each event contains incremental tokens followed by a `final` payload with the rendered answer, citations, token counts, and latency/cost metadata.
 - The backend keeps a short-lived in-memory cache keyed by normalized question + airline filter so repeated queries are served instantly without re-calling the LLM.
+
+#### Quickstart via CLI (curl)
+
+You can query the API directly from your terminal:
+
+```bash
+# Basic query
+curl -X POST "http://localhost:8000/ask" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "Can I bring my cat on board?", "airline": "Delta"}'
+
+# Streaming response
+curl -N -X POST "http://localhost:8000/ask/stream" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "What is the checked bag fee?", "stream": true}'
+```
 
 ### Example Q&A
 
@@ -106,6 +158,8 @@ Here are example answers for key queries, demonstrating the application's abilit
 
 The application is instrumented with [LangFuse](https://langfuse.com/) for full-stack observability. For detailed information on trace structures, metrics, and dashboard setup, please refer to the [Langfuse Integration Guide](docs/langfuse.md).
 
+![LangFuse Traces](docs/traces_in_langfuse.png)
+
 **Configuration:**
 Ensure the following environment variables are set (see `.env.example`):
 - `LANGFUSE_PUBLIC_KEY`
@@ -132,6 +186,14 @@ In the LangFuse UI, you can create dashboards to monitor:
 
   Results are written to `data/evals/run-*.jsonl` (git-ignored) and the summary metrics (Recall@k, MRR, citation precision/recall, refusal accuracy, latency P50/P95, token totals, and USD cost estimates) are printed and logged.
 - The harness reports optional LangFuse traces when `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_HOST` are configured. Each eval case is logged with its metrics, citations, and latency/cost metadata so later workflows (F/H) can inspect regressions.
+
+### Methodology
+
+This project was developed using a combination of AI agents:
+- **Codex CLI**: Employed with `gpt-5.1-codex` (high/medium settings) for various development tasks.
+- **Gemini CLI**: Utilized with `gemini-3-pro-preview` for specific problem-solving and implementation steps.
+
+The `docs/tasks.md` file served as a comprehensive guideline, enabling parallel workstreams and efficient task management through GitHub worktrees where feasible.
 
 ### Future Improvements
 
